@@ -1,0 +1,169 @@
+/*
+ * Supervisor Portal design tokens.
+ *
+ * Visual language follows the redesigned AssignX client app (nitin612/assign-X,
+ * src/styles/tokens.css): Plus Jakarta Sans, warm sunset coral brand, slate ink,
+ * white 16px cards on a cool canvas, soft diffused shadows, and the floating
+ * frosted-glass sidebar. Token names follow the Dolancer app (Tailwind v4 @theme),
+ * so components move between the apps without edits.
+ *
+ * The portal is an internal console used all day, so it adds what the client app
+ * does not need: dense tables, SLA clocks, side colours, and segment accents.
+ *
+ * Dark mode: every colour is a variable, redefined under .dark at the bottom.
+ */
+@theme {
+  /* Canvas and surfaces */
+  --color-canvas: #f4f5f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f9fa;
+  --color-subtle: #edeff3;
+  --color-muted: #e2e5eb;
+  --color-hover: #f1f3f6;
+
+  /* Ink (slate) - high contrast in light mode */
+  --color-ink: #0f172a;
+  --color-ink-2: #1e293b;
+  --color-ink-muted: #334155;
+  --color-ink-3: #475569;
+  --color-inverse: #ffffff;
+
+  /* Brand: warm sunset coral, same as the AssignX client app */
+  --color-primary: #ee6b50;
+  --color-primary-hover: #d95236;
+  --color-primary-light: #fef3f0;
+  --color-primary-ink: #b8432a;
+  --color-primary-from: #fa795c;
+  --color-primary-to: #d95236;
+
+  /* Segment accent: a small chip, never the whole UI (set on <html data-segment>) */
+  --color-segment: var(--sp-segment);
+  --color-segment-light: var(--sp-segment-light);
+
+  /* Side colours. The supervisor is the bridge between two anonymous parties:
+     anything facing the client wears AssignX coral, anything facing the doer
+     wears Dolancer cobalt. */
+  --color-client: #e85d40;
+  --color-client-light: #fef1ec;
+  --color-client-ink: #b5401f;
+  --color-doer: #0a65c0;
+  --color-doer-light: #e8f1fa;
+  --color-doer-ink: #0854a0;
+
+  /* Sidebar glass */
+  --color-rail: #0f172a;
+  --color-rail-line: rgba(255, 255, 255, 0.12);
+  --color-rail-ink: rgba(255, 255, 255, 0.78);
+  --color-rail-ink-muted: rgba(255, 255, 255, 0.5);
+
+  /* Lines */
+  --color-line: #cbd5e1;
+  --color-line-subtle: #f1f5f9;
+  --color-line-card: #e2e8f0;
+
+  /* Status. Every status also carries a text label, never colour alone. */
+  --color-success-bg: #ecfdf5;
+  --color-success-ink: #047857;
+  --color-success-dot: #10b981;
+  --color-warning-bg: #fffbeb;
+  --color-warning-ink: #b45309;
+  --color-warning-dot: #f59e0b;
+  --color-danger-bg: #fef2f2;
+  --color-danger-ink: #b91c1c;
+  --color-danger-dot: #ef4444;
+  --color-info-bg: #eff6ff;
+  --color-info-ink: #1d4ed8;
+  --color-info-dot: #3b82f6;
+  --color-neutral-bg: #f1f5f9;
+  --color-neutral-ink: #475569;
+  --color-neutral-dot: #94a3b8;
+  --color-violet-bg: #f5f3ff;
+  --color-violet-ink: #6d28d9;
+  --color-violet-dot: #7c3aed;
+
+  /* Soft modern shadows (client app values) */
+  --shadow-soft-sm: 0 2px 6px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  --shadow-soft-md: 0 10px 28px -4px rgba(15, 23, 42, 0.08), 0 4px 10px -2px rgba(15, 23, 42, 0.04);
+  --shadow-soft-lg: 0 25px 50px -12px rgba(15, 23, 42, 0.22);
+  --shadow-glow: 0 4px 18px rgba(238, 107, 80, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+
+  /* Type */
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+
+  /* Radii (client app): buttons 10, inputs 12, cards 16, modals 20 */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+
+  /* Motion. Spring easing, never a linear fade. */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+:root,
+:root[data-segment="supervisor"] {
+  --sp-segment: #6366f1;
+  --sp-segment-light: #eef0ff;
+}
+:root[data-segment="qqd"] {
+  --sp-segment: #10b981;
+  --sp-segment-light: #e7f8f1;
+}
+:root[data-segment="support"] {
+  --sp-segment: #f59e0b;
+  --sp-segment-light: #fff6e5;
+}
+
+/* Dark mode, mirroring the client app's .dark theme (black canvas, #121216 surfaces). */
+.dark {
+  color-scheme: dark;
+  --color-canvas: #000000;
+  --color-surface: #121216;
+  --color-surface-2: #17171c;
+  --color-subtle: #1e1e25;
+  --color-muted: #2a2a33;
+  --color-hover: #1c1c22;
+  --color-ink: #f4f4f6;
+  --color-ink-2: #d4d4dc;
+  --color-ink-muted: #a1a1ad;
+  --color-ink-3: #7d7d8a;
+  --color-inverse: #0b0b0e;
+  --color-primary-light: rgba(238, 107, 80, 0.14);
+  --color-primary-ink: #ff9b85;
+  --color-client-light: rgba(232, 93, 64, 0.14);
+  --color-client-ink: #ff9b85;
+  --color-doer-light: rgba(10, 101, 192, 0.2);
+  --color-doer-ink: #7db8f5;
+  --color-line: #33333d;
+  --color-line-subtle: #1f1f26;
+  --color-line-card: #26262e;
+  --color-success-bg: rgba(16, 185, 129, 0.14);
+  --color-success-ink: #6ee7b7;
+  --color-warning-bg: rgba(245, 158, 11, 0.14);
+  --color-warning-ink: #fcd34d;
+  --color-danger-bg: rgba(239, 68, 68, 0.15);
+  --color-danger-ink: #fca5a5;
+  --color-info-bg: rgba(59, 130, 246, 0.15);
+  --color-info-ink: #93c5fd;
+  --color-neutral-bg: #1e1e25;
+  --color-neutral-ink: #c4c4cf;
+  --color-violet-bg: rgba(124, 58, 237, 0.16);
+  --color-violet-ink: #c4b5fd;
+  --sp-segment-light: rgba(255, 255, 255, 0.08);
+  --shadow-soft-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-soft-md: 0 10px 28px -4px rgba(0, 0, 0, 0.6);
+}

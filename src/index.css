@@ -1,0 +1,4 @@
+/* Fonts are linked from index.html so the browser fetches them alongside this file. */
+@import "tailwindcss";
+@import "./styles/theme.css";
+@import "./styles/base.css";
