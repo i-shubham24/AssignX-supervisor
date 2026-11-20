@@ -9,36 +9,52 @@ import { HOUR } from "@/lib/datetime";
 import { isActiveDoer, needsWorkingLink, openFlags } from "@/features/projects/queues";
 import { SLA } from "@/lib/config";
 
-/* Hero card: the one filled coral card on a dashboard ---------------- */
+/* Hero card: balanced command card matching light/dark surfaces --------- */
 
-export function HeroCard({ name, health, lines, cta }: { name: string; health: number; lines: { label: string; value: React.ReactNode }[]; cta?: { to: string; label: string } }) {
+export function HeroCard({
+  name,
+  health,
+  lines,
+  cta,
+  badge = "Operations Core",
+  subtitle = "Queue health & delivery pace",
+}: {
+  name: string;
+  health: number;
+  lines: { label: string; value: React.ReactNode }[];
+  cta?: { to: string; label: string };
+  badge?: string;
+  subtitle?: string;
+}) {
   return (
-    <section className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-line-card bg-[#0f172a] p-4 text-white shadow-soft-sm sm:p-5">
-      <div aria-hidden="true" className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-primary/10 blur-2xl" />
+    <section className="relative flex flex-col justify-between overflow-hidden rounded-2xl border border-line-card bg-surface p-4 text-ink shadow-soft-sm transition-colors sm:p-5">
       <div>
         <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[10.5px] font-semibold text-white/90">
-            <span className="h-1.5 w-1.5 rounded-full bg-success-dot animate-pulse" /> Operations Core
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-success-dot/25 bg-success-bg px-2 py-0.5 text-[10.5px] font-semibold text-success-ink">
+            <span className="h-1.5 w-1.5 rounded-full bg-success-dot animate-pulse" /> {badge}
           </span>
-          <span className="text-[11px] font-medium text-white/50">Live</span>
+          <span className="text-[11px] font-medium text-ink-3">Live</span>
         </div>
-        <div className="mt-2 text-[18px] font-extrabold tracking-[-0.02em] text-white sm:text-[20px]">Hi, {name}</div>
-        <div className="text-[12px] text-white/70">Queue health & delivery pace</div>
+        <div className="mt-2 text-[18px] font-extrabold tracking-[-0.02em] text-ink sm:text-[20px]">Hi, {name}</div>
+        <div className="text-[12px] text-ink-muted">{subtitle}</div>
       </div>
-      <div className="relative my-3 flex justify-center">
-        <RingGauge value={health} light label={`${Math.round(health)}%`} sub="on time" size={136} />
+      <div className="relative my-2.5 flex justify-center">
+        <RingGauge value={health} light={false} label={`${Math.round(health)}%`} sub="on time" size={118} stroke={9} />
       </div>
-      <dl className="grid grid-cols-3 gap-1.5 rounded-xl bg-white/5 p-2 ring-1 ring-white/10">
+      <dl className="grid grid-cols-3 gap-1.5 rounded-xl border border-line-subtle bg-surface-2 p-2">
         {lines.map((l) => (
           <div key={l.label} className="min-w-0 text-center">
-            <dt className="truncate text-[10.5px] font-medium text-white/60">{l.label}</dt>
-            <dd className="text-[15px] font-bold tabular text-white sm:text-[16px]">{l.value}</dd>
+            <dt className="truncate text-[10.5px] font-medium text-ink-muted">{l.label}</dt>
+            <dd className="text-[15px] font-bold tabular text-ink sm:text-[16px]">{l.value}</dd>
           </div>
         ))}
       </dl>
       {cta ? (
-        <Link to={cta.to} className="relative mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/10 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-white/20">
-          {cta.label} <ArrowRight className="h-3.5 w-3.5" />
+        <Link
+          to={cta.to}
+          className="relative mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl border border-line bg-surface py-1.5 text-[12px] font-semibold text-ink transition-colors hover:bg-hover hover:border-line-card"
+        >
+          {cta.label} <ArrowRight className="h-3.5 w-3.5 text-ink-3" />
         </Link>
       ) : null}
     </section>
@@ -109,18 +125,18 @@ export function DueChart({ data, title = "Due in the next 12 hours" }: { data: B
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <section className="flex min-w-0 flex-col rounded-2xl border border-line-card bg-surface p-4 shadow-soft-sm sm:p-5">
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-2.5 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-[14px] font-bold tracking-[-0.01em]">{title}</h2>
-          <p className="text-[11.5px] text-ink-3">Upcoming deadlines and deliverable checkpoints</p>
+          <h2 className="text-[13.5px] font-bold tracking-[-0.01em] text-ink">{title}</h2>
+          <p className="text-[11px] text-ink-muted">Upcoming deadlines and deliverable checkpoints</p>
         </div>
         <div className="text-right">
-          <div className="font-mono text-[20px] font-semibold leading-none tabular">{total}</div>
-          <div className="mt-0.5 text-[10.5px] text-ink-3">due</div>
+          <div className="font-mono text-[18px] font-semibold leading-none tabular text-ink">{total}</div>
+          <div className="mt-0.5 text-[10px] uppercase font-bold text-ink-muted">due</div>
         </div>
       </div>
       <div className="w-full max-w-full min-w-0 overflow-x-auto">
-        <BarChart data={data} highlight={peak} height={140} ariaLabel={`${title}: ${total} items`} className="w-full min-w-0" />
+        <BarChart data={data} highlight={peak} height={100} ariaLabel={`${title}: ${total} items`} className="w-full min-w-0" />
       </div>
     </section>
   );
@@ -142,14 +158,26 @@ export interface TodoItem {
 }
 
 export function TodoList({ items }: { items: TodoItem[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="p-6 text-center text-sm text-ink-muted">
+        All clear. No urgent tasks requiring attention right now.
+      </div>
+    );
+  }
   return (
     <ul className="divide-y divide-line-subtle">
       {items.map((t) => {
-        const tone = t.tone === "danger" ? "bg-danger-bg text-danger-ink" : t.tone === "warning" ? "bg-warning-bg text-warning-ink" : "bg-info-bg text-info-ink";
+        const toneBg =
+          t.tone === "danger"
+            ? "bg-danger-bg text-danger-ink border border-danger-ink/20"
+            : t.tone === "warning"
+              ? "bg-warning-bg text-warning-ink border border-warning-ink/20"
+              : "bg-info-bg text-info-ink border border-info-ink/20";
         return (
           <li key={t.key}>
-            <Link to={t.to} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-hover">
-              <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full [&>svg]:h-4 [&>svg]:w-4", tone)} aria-hidden="true">
+            <Link to={t.to} className="group flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-hover">
+              <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl [&>svg]:h-4 [&>svg]:w-4", toneBg)} aria-hidden="true">
                 {t.icon}
               </span>
               <div className="min-w-0 flex-1">
@@ -162,8 +190,8 @@ export function TodoList({ items }: { items: TodoItem[] }) {
                 {t.detail ? <div className="mt-0.5 truncate text-[12px] text-ink-muted sm:text-[12.5px]">{t.detail}</div> : null}
               </div>
               {t.due ? <span className="hidden shrink-0 sm:block">{t.due}</span> : null}
-              <span className="hidden shrink-0 items-center gap-0.5 text-[12.5px] font-bold text-primary-ink md:flex">
-                {t.cta} <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              <span className="hidden shrink-0 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11.5px] font-bold text-ink transition-colors group-hover:bg-primary group-hover:text-white group-hover:border-primary md:flex">
+                {t.cta} <ChevronRight className="h-3.5 w-3.5" />
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-ink-3 md:hidden" aria-hidden="true" />
             </Link>
