@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Sun, Moon, Laptop } from "lucide-react";
 import { useAction, usePreferences } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
@@ -9,15 +10,19 @@ import { Button } from "@/components/ui/button";
 import { Checkbox, Field, Input } from "@/components/ui/field";
 import { SEGMENTS } from "@/lib/config";
 import { formatDate } from "@/lib/datetime";
+import { cn } from "@/lib/cn";
 import type { OperatorPreferences } from "@/types/domain";
 
-/** Your account, how we reach you, and quiet hours. */
+/** Your account, appearance, how we reach you, and quiet hours. */
 export default function SettingsPage() {
   const me = useMe();
   const { data } = usePreferences();
   const [prefs, setPrefs] = useState<OperatorPreferences | null>(null);
-  const dark = useUiStore((s) => s.dark);
-  const toggleDark = useUiStore((s) => s.toggleDark);
+
+  const themeMode = useUiStore((s) => s.themeMode);
+  const setThemeMode = useUiStore((s) => s.setThemeMode);
+  const density = useUiStore((s) => s.density);
+  const setDensity = useUiStore((s) => s.setDensity);
 
   useEffect(() => {
     if (data && !prefs) setPrefs(data);
@@ -49,8 +54,69 @@ export default function SettingsPage() {
           <p className="mt-4 text-xs text-ink-3">Two-step sign-in is always on for portal accounts.</p>
         </Panel>
 
-        <Panel title="Look">
-          <Checkbox checked={dark} onChange={() => toggleDark()} label="Dark mode" />
+        <Panel title="Look" sub="Theme and interface density">
+          <div className="space-y-4">
+            {/* Color Theme Selector */}
+            <div>
+              <div className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-ink-3">Color Theme</div>
+              <div className="grid grid-cols-3 gap-2.5">
+                {[
+                  { id: "light", label: "Light", icon: Sun, desc: "Crisp daylight" },
+                  { id: "dark", label: "Dark", icon: Moon, desc: "Low-light dim" },
+                  { id: "system", label: "System", icon: Laptop, desc: "Matches device" },
+                ].map((t) => {
+                  const Icon = t.icon;
+                  const active = themeMode === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setThemeMode(t.id as "light" | "dark" | "system")}
+                      className={cn(
+                        "flex flex-col items-center justify-center rounded-xl border p-2.5 text-center transition-all",
+                        active
+                          ? "border-primary bg-primary/5 text-ink ring-1 ring-primary shadow-xs"
+                          : "border-line-card bg-surface hover:bg-hover hover:border-line text-ink-muted",
+                      )}
+                    >
+                      <Icon className={cn("h-4 w-4 mb-1", active ? "text-primary" : "text-ink-muted")} />
+                      <span className="text-[12.5px] font-bold text-ink">{t.label}</span>
+                      <span className="text-[10px] text-ink-3">{t.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Interface Density */}
+            <div className="border-t border-line-subtle pt-3">
+              <div className="mb-2 text-[11.5px] font-semibold uppercase tracking-[0.05em] text-ink-3">Interface Density</div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {[
+                  { id: "comfortable", label: "Comfortable", desc: "Spacious cards & generous margins" },
+                  { id: "compact", label: "Compact", desc: "Tighter rows for high-volume shifts" },
+                ].map((d) => {
+                  const active = density === d.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => setDensity(d.id as "comfortable" | "compact")}
+                      className={cn(
+                        "flex flex-col rounded-xl border p-2.5 text-left transition-all",
+                        active
+                          ? "border-primary bg-primary/5 ring-1 ring-primary shadow-xs"
+                          : "border-line-card bg-surface hover:bg-hover hover:border-line",
+                      )}
+                    >
+                      <span className="text-[12.5px] font-bold text-ink">{d.label}</span>
+                      <span className="text-[10.5px] text-ink-muted">{d.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
         </Panel>
 
         <Panel title="How we reach you" className="xl:col-span-2">
