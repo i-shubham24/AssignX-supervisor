@@ -39,10 +39,12 @@ import { AskSupportButton, ChangeSupervisorButton, ClientDemoBar, FlagReplyButto
 import { OfferDialog } from "./OfferDialog";
 import { ProgressDialog, SnapshotDialog, WorkingLinkDialog } from "./dialogs";
 import { hasActiveDoer, isActiveDoer, isSourcing, openFlags } from "./queues";
+import { useProjectRealtime } from "@/lib/realtime";
 
 export default function ProjectWorkspace() {
   const { id = "" } = useParams();
   const { data: p, isLoading, error, refetch } = useProject(id);
+  useProjectRealtime(id);
   const me = useMe();
   const [tab, setTab] = useState<"client" | "internal">("client");
 

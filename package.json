@@ -18,8 +18,9 @@
     "check:copy": "node scripts/copy-guard.mjs",
     "check:security": "node scripts/security-scan.mjs",
     "check:dist": "node scripts/dist-scan.mjs",
+    "test:webhooks": "node scripts/qa-phase4-webhooks.mjs",
     "audit": "npm audit --omit=dev --audit-level=moderate",
-    "verify": "npm run typecheck && npm run lint && npm run check:secrets && npm run check:copy && npm run check:security && npm run build:demo && npm run check:dist"
+    "verify": "npm run typecheck && npm run lint && npm run check:secrets && npm run check:copy && npm run check:security && npm run test:webhooks && npm run build:demo && npm run check:dist"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

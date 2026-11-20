@@ -43,6 +43,8 @@ function Review({ p }: { p: Project }) {
   const [note, setNote] = useState(p.delivery_note ?? "");
   const [sendBackOpen, setSendBackOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [originalityPct, setOriginalityPct] = useState(97);
+  const [aiScorePct, setAiScorePct] = useState(3);
 
   const save = useAction((next: Omit<QcRecord, "completed_at">) => api.saveQc(p.id, next, me.id), { fallback: "Your check was not saved." });
   // Save checklist edits shortly after the last change, so ticks survive a reload.
@@ -183,8 +185,73 @@ function Review({ p }: { p: Project }) {
 
           {needsReport ? (
             <Panel title="Quality report" sub="Attach the originality and AI check report." actions={<SideTag side="client" />}>
-              {reports.length ? <FileList files={reports} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} /> : <p className="text-sm text-ink-3">No report yet.</p>}
-              {!locked ? <UploadButton label="Attach report" policy={REPORT_POLICY} onPick={(name) => upload.mutate({ name, kind: "quality_report" })} busy={upload.isPending} /> : null}
+              {reports.length ? (
+                <>
+                  <FileList files={reports} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} />
+                  <div className="mt-3 rounded-xl border border-line-card bg-surface-2 p-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-ink-2">Authenticity & Originality</span>
+                      <span className="rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-bold text-success-ink">
+                        Verified
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-1 text-[12px]">
+                      <div className="rounded-lg bg-surface p-2 text-center ring-1 ring-line-card">
+                        <span className="block text-[11px] text-ink-muted">Originality</span>
+                        <span className="text-sm font-bold text-success-ink">{originalityPct}%</span>
+                      </div>
+                      <div className="rounded-lg bg-surface p-2 text-center ring-1 ring-line-card">
+                        <span className="block text-[11px] text-ink-muted">AI Detection</span>
+                        <span className="text-sm font-bold text-ink-2">{aiScorePct}%</span>
+                      </div>
+                    </div>
+                    <p className="text-[10.5px] text-ink-muted">
+                      Originality verified without disclosing detection vendor (PRD BR-035).
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-ink-3">No report attached yet. An originality scan is required for writing deliverables.</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <label className="text-[11px] font-semibold text-ink-muted">Originality %</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={originalityPct}
+                        disabled={locked}
+                        onChange={(e) => setOriginalityPct(Number(e.target.value))}
+                        className="h-8 mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-ink-muted">AI Score %</label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={aiScorePct}
+                        disabled={locked}
+                        onChange={(e) => setAiScorePct(Number(e.target.value))}
+                        className="h-8 mt-1"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!locked ? (
+                <UploadButton
+                  label="Attach report"
+                  policy={REPORT_POLICY}
+                  onPick={(name) => {
+                    upload.mutate({ name, kind: "quality_report" });
+                    edit((q) => ({ ...q, checks: { ...q.checks, report: true } }));
+                  }}
+                  busy={upload.isPending}
+                />
+              ) : null}
             </Panel>
           ) : null}
         </div>

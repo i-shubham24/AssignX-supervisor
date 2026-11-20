@@ -13,6 +13,7 @@ import { SlaClock, SkeletonRows, ErrorState, EmptyState } from "@/components/por
 import { SideTag } from "@/components/portal/pills";
 import { toast } from "sonner";
 import { CHAT_POLICY, checkUpload, cleanText, createRateLimiter } from "@/lib/input-safety";
+import { useThreadRealtime } from "@/lib/realtime";
 
 const HELD_REASON = { contact_details: "Contact details", identity_reveal: "Identity reveal" } as const;
 
@@ -27,6 +28,7 @@ const sendLimiter = createRateLimiter(20, 60_000);
 export function ChatThread({ project, channel, className }: { project: Project; channel: Channel; className?: string }) {
   const me = useMe();
   const { data, isLoading, error, refetch } = useMessages(project.id, channel);
+  useThreadRealtime(project.id, channel);
   const listRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
   const [files, setFiles] = useState<string[]>([]);

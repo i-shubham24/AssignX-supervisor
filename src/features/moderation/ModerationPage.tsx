@@ -10,6 +10,7 @@ import { CategoryBadge, Code, Pill, SideTag } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
 import { CATEGORIES, SLA } from "@/lib/config";
 import { formatTime } from "@/lib/datetime";
+import { useModerationRealtime } from "@/lib/realtime";
 import { cn } from "@/lib/cn";
 import type { HeldItem } from "@/types/domain";
 
@@ -22,6 +23,7 @@ const REASON = { contact_details: "Contact details", identity_reveal: "Identity 
  */
 export default function ModerationPage() {
   const me = useMe();
+  useModerationRealtime();
   const held = useHeld();
   const projects = useProjects();
   const mineIds = new Set((projects.data ?? []).filter((p) => p.supervisor_id === me.id).map((p) => p.id));
