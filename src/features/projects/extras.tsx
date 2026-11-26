@@ -17,6 +17,17 @@ import { env } from "@/lib/env";
 /* Client revision banner --------------------------------------------- */
 
 export function RevisionBanner({ p }: { p: Project }) {
+  if (p.paid_revision_pending && p.status === "delivered") {
+    return (
+      <div className="flex gap-3 rounded-2xl border border-warning-dot/35 bg-warning-bg p-4 text-[13px]">
+        <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-warning-ink" aria-hidden="true" />
+        <div>
+          <div className="font-bold text-warning-ink">Paid 4th+ revision requested</div>
+          <p className="mt-0.5 text-ink-2">{p.client_revision_reason ?? "All free revisions were used. Waiting for QQD to send a paid add-on quote."}</p>
+        </div>
+      </div>
+    );
+  }
   if (p.status !== "in_progress" || !p.revision_count || !p.client_revision_reason) return null;
   return (
     <div className="flex gap-3 rounded-2xl border border-warning-dot/35 bg-warning-bg p-4 text-[13px]">
@@ -26,7 +37,7 @@ export function RevisionBanner({ p }: { p: Project }) {
           Client asked for changes ({p.revision_count} of {FREE_REVISIONS} free)
         </div>
         <p className="mt-0.5 text-ink-2">{p.client_revision_reason}</p>
-        {p.revision_count >= FREE_REVISIONS ? <p className="mt-1 text-xs text-ink-3">This was the last free revision. More changes need a paid quote from QQD.</p> : null}
+        {p.revision_count >= FREE_REVISIONS ? <p className="mt-1 text-xs text-ink-3">All free revisions used. Additional changes require a paid quote from QQD.</p> : null}
       </div>
     </div>
   );
@@ -142,6 +153,7 @@ export function ClientDemoBar({ p }: { p: Project }) {
   const [reason, setReason] = useState<Flag["reason"]>("delay");
   const approve = useAction(() => api.demo.clientApproves(p.id), { success: "Demo: client approved. QQD can pay now." });
   const revise = useAction(() => api.demo.clientRevises(p.id, "Please make the headline bigger and use our darker brand colour."), { success: "Demo: client asked for changes." });
+  const paidRev = useAction(() => api.demo.requestPaidRevision(p.id, "Additional layout update beyond free revisions."), { success: "Demo: paid revision requested. QQD can now send an add-on quote." });
   const flag = useAction(() => api.demo.clientFlags(p.id, reason, "I'm not happy with how this is going."), { success: "Demo: client raised a flag." });
   if (!env.demoMode) return null;
   const live = p.status === "in_progress" || p.status === "in_review" || p.status === "delivered";
@@ -152,7 +164,11 @@ export function ClientDemoBar({ p }: { p: Project }) {
       {p.status === "delivered" ? (
         <>
           <Button size="xs" variant="outline" loading={approve.isPending} onClick={() => approve.mutate(undefined)}>Approve</Button>
-          <Button size="xs" variant="outline" loading={revise.isPending} onClick={() => revise.mutate(undefined)}>Ask for changes</Button>
+          {p.revision_count < FREE_REVISIONS ? (
+            <Button size="xs" variant="outline" loading={revise.isPending} onClick={() => revise.mutate(undefined)}>Ask for changes</Button>
+          ) : !p.paid_revision_pending ? (
+            <Button size="xs" variant="outline" loading={paidRev.isPending} onClick={() => paidRev.mutate(undefined)}>Request paid revision</Button>
+          ) : null}
         </>
       ) : null}
       {p.flag_count < 3 ? (

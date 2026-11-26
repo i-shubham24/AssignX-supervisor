@@ -15,6 +15,7 @@ import { env } from "./env";
 export const topics = {
   thread: (threadId: string) => `thread:${threadId}`,
   project: (projectId: string) => `project:${projectId}`,
+  notifications: (userId: string) => `notifications:${userId}`,
   moderation: "queue:moderation",
   stalled: "queue:stalled",
   disbursements: "queue:disbursements",
@@ -22,9 +23,10 @@ export const topics = {
 
 type BroadcastHandler = (payload: unknown) => void;
 
-export function subscribeToBroadcast(topic: string, event: string, handler: BroadcastHandler): () => void {
+export function subscribeToBroadcast(topic: string, events: string | string[], handler: BroadcastHandler): () => void {
   if (env.demoMode) return () => {};
 
+  const eventList = Array.isArray(events) ? events : [events];
   let disposed = false;
   let cleanup: (() => void) | null = null;
 
@@ -34,16 +36,18 @@ export function subscribeToBroadcast(topic: string, event: string, handler: Broa
       if (disposed) return;
 
       const channel = supabase.channel(topic, { config: { private: true } });
-      channel.on("broadcast", { event }, (msg) => {
-        handler(msg.payload);
-      });
+      for (const event of eventList) {
+        channel.on("broadcast", { event }, (msg) => {
+          handler(msg.payload);
+        });
+      }
       channel.subscribe();
 
       cleanup = () => {
         void supabase.removeChannel(channel);
       };
     } catch (err) {
-      console.warn(`[Realtime] Failed to subscribe to ${topic}:${event}`, err);
+      console.warn(`[Realtime] Failed to subscribe to ${topic}`, err);
     }
   })();
 
@@ -55,19 +59,19 @@ export function subscribeToBroadcast(topic: string, event: string, handler: Broa
 
 /**
  * Hook to stream messages for an open project thread.
- * Automatically invalidates query cache when a new message arrives.
+ * Supports both unified thread UUIDs (matching Dolancer) and channel-scoped topics.
  */
-export function useThreadRealtime(projectId: string | null, channelType: "client" | "internal") {
+export function useThreadRealtime(projectId: string | null, channelType: "client" | "internal", threadId?: string | null) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!projectId || env.demoMode) return;
 
-    const topic = topics.thread(`${projectId}:${channelType}`);
-    return subscribeToBroadcast(topic, "new_message", () => {
-      void queryClient.invalidateQueries({ queryKey: ["messages", projectId, channelType] });
+    const topic = topics.thread(threadId ?? `${projectId}:${channelType}`);
+    return subscribeToBroadcast(topic, ["INSERT", "new_message"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "messages", projectId, channelType] });
     });
-  }, [projectId, channelType, queryClient]);
+  }, [projectId, channelType, threadId, queryClient]);
 }
 
 /**
@@ -79,9 +83,9 @@ export function useModerationRealtime() {
   useEffect(() => {
     if (env.demoMode) return;
 
-    return subscribeToBroadcast(topics.moderation, "held_message", () => {
-      void queryClient.invalidateQueries({ queryKey: ["held"] });
-      void queryClient.invalidateQueries({ queryKey: ["counts"] });
+    return subscribeToBroadcast(topics.moderation, ["held_message", "INSERT", "change"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "held"] });
+      void queryClient.invalidateQueries({ queryKey: ["portal", "projects"] });
     });
   }, [queryClient]);
 }
@@ -96,9 +100,49 @@ export function useProjectRealtime(projectId: string | null) {
     if (!projectId || env.demoMode) return;
 
     const topic = topics.project(projectId);
-    return subscribeToBroadcast(topic, "status_changed", () => {
-      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
-      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    return subscribeToBroadcast(topic, ["change", "status_changed"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "project", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["portal", "projects"] });
+      void queryClient.invalidateQueries({ queryKey: ["portal", "history", projectId] });
     });
   }, [projectId, queryClient]);
+}
+
+/**
+ * Hook to stream operator notifications, matching Dolancer topic notifications:<userId>.
+ */
+export function useNotificationsRealtime(userId: string | null) {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!userId || env.demoMode) return;
+
+    return subscribeToBroadcast(topics.notifications(userId), ["new", "INSERT"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "notifications"] });
+      void queryClient.invalidateQueries({ queryKey: ["portal", "activity"] });
+    });
+  }, [userId, queryClient]);
+}
+
+/**
+ * Hook to stream disbursement and stalled queue updates for QQD.
+ */
+export function useDisbursementsRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (env.demoMode) return;
+
+    const unsubDisb = subscribeToBroadcast(topics.disbursements, ["change", "INSERT"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "disbursements"] });
+      void queryClient.invalidateQueries({ queryKey: ["portal", "ledger"] });
+    });
+    const unsubStalled = subscribeToBroadcast(topics.stalled, ["change", "INSERT"], () => {
+      void queryClient.invalidateQueries({ queryKey: ["portal", "projects"] });
+    });
+    return () => {
+      unsubDisb();
+      unsubStalled();
+    };
+  }, [queryClient]);
 }

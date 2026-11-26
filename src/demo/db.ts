@@ -13,8 +13,11 @@ import type {
   ActivityEvent,
   Attachment,
   Channel,
+  ChargebackEvidencePack,
   DisbursementItem,
+  DoerConductEntry,
   DisbursementLine,
+  DoerLevel,
   Flag,
   HeldItem,
   Message,
@@ -437,16 +440,42 @@ export function sendQuote(projectId: string, input: QuoteInput, actorId: string)
 export function simulatePayment(projectId: string) {
   const p = mustProject(projectId);
   if (p.status !== "awaiting_payment") throw portalError("Only a quoted project can be paid.");
+  const isPaidRevision = Boolean(p.paid_revision_pending);
   p.status = "in_progress";
-  p.paid_at = nowIso();
+  p.paid_at = p.paid_at ?? nowIso();
+  p.invoice_number = p.invoice_number ?? `INV-${p.code.replace("AX-", "")}`;
+  p.razorpay_payment_id = p.razorpay_payment_id ?? `pay_demo_${p.code.slice(-4)}`;
+  if (isPaidRevision) {
+    p.revision_count += 1;
+    p.paid_revision_pending = false;
+    p.qc = null;
+    p.qc_bounce_count = 0;
+    p.progress_percent = 80;
+    p.progress_label = `Paid revision ${p.revision_count}`;
+    p.progress_updated_at = nowIso();
+    for (const a of p.attachments) if (a.kind === "deliverable") a.client_visible = false;
+    for (const pd of p.doers) {
+      if (pd.status !== "completed") continue;
+      pd.status = "accepted";
+      const d = state.doers.find((x) => x.id === pd.doer_id);
+      if (d) d.active_project_count += 1;
+    }
+    recountSupervisorLoad();
+    systemMessage(p, "Paid revision payment confirmed");
+    log("paid", p, `Paid revision #${p.revision_count} funded by client`, "Razorpay");
+    if (p.supervisor_id === seed.DEMO_IDENTITY.supervisor) {
+      notify("supervisor", "Paid revision funded", `${p.code} paid revision #${p.revision_count} is back in progress.`, `/projects/${p.id}`, "info");
+    }
+  } else {
+    systemMessage(p, "Payment confirmed");
+    log("paid", p, "Payment captured, entered assignment queue", "Razorpay");
+    notify("qqd", "Payment captured", `${p.code} is paid and needs a supervisor within 15 minutes.`, "/assignment", "info");
+  }
   touch(p);
-  systemMessage(p, "Payment confirmed");
   state.ledger.unshift({
     id: nextId("lg"), type: "payment_captured", project_code: p.code, amount: p.quote_amount ?? 0, currency: p.quote_currency, inr_equivalent: p.quote_amount_inr ?? 0,
-    fx_rate: seed.DEMO_FX_TO_INR[p.quote_currency], actor: "Razorpay webhook", provider_ref: `pay_demo_${p.code.slice(-4)}`, created_at: nowIso(),
+    fx_rate: seed.DEMO_FX_TO_INR[p.quote_currency], actor: "Razorpay webhook", provider_ref: p.razorpay_payment_id, created_at: nowIso(),
   });
-  log("paid", p, "Payment captured, entered assignment queue", "Razorpay");
-  notify("qqd", "Payment captured", `${p.code} is paid and needs a supervisor within 15 minutes.`, "/assignment", "info");
 }
 
 export function assignSupervisor(projectId: string, supervisorId: string, actorId: string) {
@@ -691,7 +720,17 @@ export function saveQc(projectId: string, qc: Omit<QcRecord, "completed_at">, ac
   const p = mustProject(projectId);
   assertSupervisorOwns(p, actorId);
   if (p.status !== "in_review") throw portalError("QC is recorded while the project is in review.");
-  const clean = { ...qc, notes: cleanText(qc.notes, 2000), custom_checks: qc.custom_checks.map((c) => ({ ...c, label: cleanText(c.label, 120) })) };
+  const clampPct = (v: number | null | undefined, prev: number | null | undefined) => {
+    if (typeof v === "number" && Number.isFinite(v)) return Math.max(0, Math.min(100, Math.round(v)));
+    return prev ?? null;
+  };
+  const clean: Omit<QcRecord, "completed_at"> = {
+    ...qc,
+    notes: cleanText(qc.notes, 2000),
+    custom_checks: qc.custom_checks.map((c) => ({ ...c, label: cleanText(c.label, 120) })),
+    originality_pct: clampPct(qc.originality_pct, p.qc?.originality_pct),
+    ai_score_pct: clampPct(qc.ai_score_pct, p.qc?.ai_score_pct),
+  };
   p.qc = { ...clean, completed_at: qcComplete(p.category, clean) ? nowIso() : null };
   touch(p);
 }
@@ -869,8 +908,14 @@ export function executeRefund(refundId: string, actorId: string) {
     recountSupervisorLoad();
   }
   const inrEq = Math.round(r.amount * seed.DEMO_FX_TO_INR[r.currency]);
+  const feeInr = r.gateway_fee_inr ?? 0;
+  const restoredCredits = r.credits_restored_inr ?? 0;
   state.ledger.unshift({ id: nextId("lg"), type: "refund_executed", project_code: r.project.code, amount: r.amount, currency: r.currency, inr_equivalent: inrEq, fx_rate: seed.DEMO_FX_TO_INR[r.currency], actor: op.full_name, provider_ref: `rfnd_demo_${r.id}`, created_at: nowIso() });
-  log("refund", p ?? null, `Refund executed for ${r.project.code}`, op.full_name);
+  if (restoredCredits > 0) {
+    state.ledger.unshift({ id: nextId("lg"), type: "credits_applied", project_code: r.project.code, amount: -restoredCredits, currency: "INR", inr_equivalent: -restoredCredits, fx_rate: 1, actor: "Credit restoration", provider_ref: `cred_restore_${r.id}`, created_at: nowIso() });
+  }
+  const suffix = feeInr > 0 ? ` (gateway fee deducted: ${formatInr(feeInr)})` : "";
+  log("refund", p ?? null, `Refund executed for ${r.project.code}${suffix}`, op.full_name);
 }
 
 /** PRD 11.3 liability determination: the project's supervisor decides, with a reason. */
@@ -941,6 +986,8 @@ export function simulateClientApprove(projectId: string) {
   if (p.status !== "delivered") throw portalError("Only delivered work can be approved.");
   p.status = "completed";
   p.approved_at = nowIso();
+  p.client_rating = p.client_rating ?? 5;
+  p.client_review_note = p.client_review_note ?? "Delivered as expected and approved on portal.";
   freeDoerSlots(p);
   touch(p);
   systemMessage(p, "You approved this delivery. Project complete.");
@@ -1139,13 +1186,18 @@ export function recommendRefund(ticketId: string, rec: NonNullable<Ticket["refun
   t.refund_recommendation = { ...rec, note: rec.note.trim() };
   t.status = "awaiting_internal";
   addEntry(t, "event", opName(actorId), `Recommended a ${rec.kind} refund and sent it to QQD`);
+  const preDoer = p ? !p.doers.some((pd) => isActiveDoer(pd) || pd.status === "completed") : false;
+  const feeInr = preDoer && rec.kind === "full" && p ? Math.round((p.quote_amount_inr ?? Math.round(rec.amount * seed.DEMO_FX_TO_INR[rec.currency])) * 0.025) : 0;
+  const creditsRestored = preDoer && p ? (p.credits_applied_inr ?? 0) : 0;
   state.refunds.unshift({
     id: nextId("rf"), ticket_reference: t.reference,
     project: p
       ? { id: p.id, code: p.code, title: p.title, category: p.category, quote_amount: p.quote_amount, quote_currency: p.quote_currency, quote_amount_inr: p.quote_amount_inr, status: p.status }
       : { id: "unknown", code: t.project_code, title: t.subject, category: "other", quote_amount: rec.amount, quote_currency: rec.currency, quote_amount_inr: null, status: "in_progress" },
     kind: rec.kind, amount: rec.amount, currency: rec.currency, recommended_by: opName(actorId), recommendation: rec.note.trim(),
-    liability_decision: null, liability_reason: null, liability_decided_by: null, approved_at: nowIso(), status: "awaiting_execution", executed_by: null, executed_at: null,
+    liability_decision: null, liability_reason: null, liability_decided_by: null,
+    gateway_fee_inr: feeInr, credits_restored_inr: creditsRestored,
+    approved_at: nowIso(), status: "awaiting_execution", executed_by: null, executed_at: null,
   });
   notify("qqd", "Refund approved by Support", `${t.reference} ${rec.kind} refund for ${t.project_code} is waiting for the supervisor's fault decision.`, "/refunds", "info");
   if (p?.supervisor_id === seed.DEMO_IDENTITY.supervisor) {
@@ -1357,4 +1409,194 @@ export function markNotificationRead(segment: Segment, id: string | "all") {
 /** Level percentage guidance for an offer (PRD 10.6 note: guidance, not a calculation). */
 export function suggestedPayout(p: Project, level: 1 | 2 | 3): Minor {
   return percentOf(p.quote_amount_inr ?? 0, LEVEL_CUT[level]);
+}
+
+/* ------------------------------------------------------------------ */
+/* Brief redaction, doer rating, conduct, paid revisions & evidence   */
+/* ------------------------------------------------------------------ */
+
+/** Save redacted doer-safe brief copy and attachment visibility toggles (PRD 10.1, BR-001). */
+export function updateDoerBrief(
+  projectId: string,
+  input: { doer_brief: string; attachment_visibility: Record<string, boolean> },
+  actorId: string,
+) {
+  const p = mustProject(projectId);
+  const op = assertSegment(actorId, "supervisor", "qqd");
+  if (op.segment === "supervisor") assertSupervisorOwns(p, actorId);
+  p.doer_brief = cleanText(input.doer_brief, 8000).trim() || null;
+  for (const a of p.attachments) {
+    if (a.kind === "brief" && a.id in input.attachment_visibility) {
+      a.doer_visible = Boolean(input.attachment_visibility[a.id]);
+    }
+  }
+  touch(p);
+  log("progress", p, "Updated redacted doer brief and file visibility", opName(actorId));
+}
+
+/** Post-completion supervisor rating of a doer across quality, timeliness and communication (PRD 10.10). */
+export function rateDoer(
+  projectId: string,
+  input: { project_doer_id: string; quality: number; timeliness: number; communication: number; notes: string },
+  actorId: string,
+) {
+  const p = mustProject(projectId);
+  const op = assertSegment(actorId, "supervisor", "qqd");
+  if (op.segment === "supervisor") assertSupervisorOwns(p, actorId);
+  if (p.status !== "completed" && !p.payout_released_at) throw portalError("Rate doers after project approval or silent payout release.");
+  const pd = p.doers.find((x) => x.id === input.project_doer_id);
+  if (!pd || !isActiveDoer(pd)) throw portalError("That doer assignment was not found.");
+  for (const val of [input.quality, input.timeliness, input.communication]) {
+    if (!Number.isInteger(val) || val < 1 || val > 5) throw portalError("Ratings must be whole stars between 1 and 5.");
+  }
+  const cleanNotes = cleanText(input.notes, 1000).trim();
+  const list = p.doer_ratings ?? [];
+  const nextRating = {
+    project_doer_id: pd.id,
+    doer_id: pd.doer_id,
+    quality: input.quality,
+    timeliness: input.timeliness,
+    communication: input.communication,
+    notes: cleanNotes,
+    rated_by: opName(actorId),
+    rated_at: nowIso(),
+  };
+  p.doer_ratings = [...list.filter((r) => r.project_doer_id !== pd.id), nextRating];
+
+  const d = state.doers.find((x) => x.id === pd.doer_id);
+  if (d) {
+    const score = Number(((input.quality + input.timeliness + input.communication) / 3).toFixed(2));
+    const count = Math.max(1, d.projects_completed);
+    const updatedAvg = d.average_rating === null ? score : Number((((d.average_rating * count) + score) / (count + 1)).toFixed(2));
+    d.average_rating = updatedAvg;
+    if (updatedAvg < 4.0) {
+      d.review_flagged = true;
+      notify("qqd", "Doer flagged for review", `${d.doer_code} dropped to ${updatedAvg.toFixed(1)} rating and requires review.`, `/doers/${d.id}`, "warning");
+    }
+  }
+  touch(p);
+  log("approved", p, `Rated ${pd.doer_code} (${input.quality}/${input.timeliness}/${input.communication})`, opName(actorId));
+}
+
+/** QQD conduct enforcement & level review actions (PRD 10.6, 10.10, 12.3, BR-037). */
+export function conductDoerAction(
+  doerId: string,
+  input: { action: DoerConductEntry["action"]; level?: DoerLevel; reason: string },
+  actorId: string,
+) {
+  const op = assertSegment(actorId, "qqd");
+  const d = state.doers.find((x) => x.id === doerId);
+  if (!d) throw portalError("That doer was not found.");
+  const reason = cleanText(input.reason, 1000).trim();
+  if (input.action !== "review_cleared" && reason.length < 10) {
+    throw portalError("Record a clear reason in at least a sentence.");
+  }
+  if (input.action === "review_cleared") {
+    d.review_flagged = false;
+  } else if (input.action === "warning") {
+    d.warning_count = (d.warning_count ?? 0) + 1;
+  } else if (input.action === "suspended") {
+    d.status = "suspended";
+    d.availability = "away";
+    d.suspension_until = new Date(Date.now() + 7 * 24 * HOUR).toISOString();
+  } else if (input.action === "restored") {
+    d.status = "active";
+    d.suspension_until = null;
+    d.review_flagged = false;
+  } else if (input.action === "demoted" || input.action === "promoted") {
+    const nextLevel = input.level ?? (input.action === "demoted" ? (Math.max(1, d.level - 1) as DoerLevel) : (Math.min(3, d.level + 1) as DoerLevel));
+    d.level = nextLevel;
+  } else if (input.action === "removed") {
+    d.status = "removed";
+    d.availability = "away";
+    d.suspension_until = null;
+    // Withdraw open offers so removed doer holds no pending invites; cleared balance remains payable (BR-037).
+    for (const p of state.projects) {
+      for (const pd of p.doers) {
+        if (pd.doer_id === d.id && pd.status === "offered") pd.status = "removed";
+      }
+    }
+  }
+  const entry: DoerConductEntry = {
+    id: nextId("dc"),
+    action: input.action,
+    reason: reason || "Review flag cleared by QQD",
+    actor_label: op.full_name,
+    created_at: nowIso(),
+  };
+  d.conduct_log = [entry, ...(d.conduct_log ?? [])];
+  log("ticket", null, `${d.doer_code}: ${input.action.replace(/_/g, " ")} (${entry.reason})`, op.full_name);
+}
+
+/** Demo-only trigger for a 4th+ revision request requiring a paid quote (PRD 6.1, 9.4). */
+export function requestPaidRevision(projectId: string, reason: string) {
+  const p = mustProject(projectId);
+  if (p.status !== "delivered") throw portalError("Only delivered work can request a paid revision.");
+  if (p.revision_count < FREE_REVISIONS) throw portalError("Free revisions remain on this project.");
+  p.paid_revision_pending = true;
+  p.client_revision_reason = cleanText(reason, 1000).trim() || "Additional post-limit revision requested by client.";
+  touch(p);
+  systemMessage(p, "Additional revision requested (paid quote pending)");
+  log("progress", p, `Client requested paid revision #${p.revision_count + 1}`, "Client");
+  notify("qqd", "Paid revision quote requested", `${p.code} used ${FREE_REVISIONS} free revisions and needs a paid add-on quote.`, `/quotes/${p.id}`, "warning");
+}
+
+/** QQD paid change-request quote for 4th+ client revisions (PRD 9.4, AC-21). */
+export function sendPaidRevisionQuote(projectId: string, input: QuoteInput, actorId: string) {
+  assertSegment(actorId, "qqd");
+  const p = mustProject(projectId);
+  if (p.status !== "delivered" && !(p.status === "awaiting_payment" && p.paid_revision_pending)) {
+    throw portalError("Paid revision quotes apply only to delivered work with all free revisions used.");
+  }
+  if (p.revision_count < FREE_REVISIONS && !p.paid_revision_pending) {
+    throw portalError("Client still has free revisions remaining.");
+  }
+  if (input.amount <= 0) throw portalError("Enter a quote amount above zero.");
+  if (input.currency !== p.client.currency) throw portalError(`Quotes for this client are in ${p.client.currency}.`);
+  if (input.delivery_duration_hours <= 0) throw portalError("Enter a delivery duration.");
+  const expiry = computeQuoteExpiry(p.deadline_utc, input.delivery_duration_hours);
+  if (expiry && new Date(expiry).getTime() <= Date.now()) {
+    throw portalError("The client's deadline cannot be met with this delivery duration.");
+  }
+  const amountInr = Math.round(input.amount * seed.DEMO_FX_TO_INR[input.currency]);
+  p.quote_amount = input.amount;
+  p.quote_currency = input.currency;
+  p.quote_amount_inr = amountInr;
+  p.quote_note = input.note.trim() || "Paid additional revision quote.";
+  p.delivery_duration_hours = input.delivery_duration_hours;
+  p.quote_expires_at = expiry;
+  p.quote_sent_at = nowIso();
+  p.expected_doer_cost_inr = input.expected_doer_cost_inr;
+  p.margin_inr = amountInr - input.expected_doer_cost_inr;
+  p.qqd_id = actorId;
+  p.paid_revision_pending = true;
+  p.status = "awaiting_payment";
+  touch(p);
+  systemMessage(p, "A paid revision quote has been sent");
+  log("quoted", p, `Paid revision quote sent: ${input.currency} ${(input.amount / 100).toLocaleString()}`, opName(actorId));
+}
+
+/** Build chargeback evidence bundle for QQD/Support dispute defense (PRD 14.6). */
+export function buildChargebackEvidence(projectId: string, actorId: string): ChargebackEvidencePack {
+  const op = assertSegment(actorId, "qqd", "support", "supervisor");
+  const p = read.project(projectId, op.id);
+  const msgs = read.messages(p.id, "client");
+  return {
+    generated_at: nowIso(),
+    project_code: p.code,
+    title: p.title,
+    category: p.category,
+    status: p.status,
+    invoice_number: p.invoice_number ?? null,
+    razorpay_payment_id: p.razorpay_payment_id ?? null,
+    quote_amount: p.quote_amount,
+    quote_currency: p.quote_currency,
+    paid_at: p.paid_at,
+    delivered_at: p.delivered_at,
+    approved_at: p.approved_at,
+    brief: p.description,
+    delivery_note: p.delivery_note,
+    deliverables: p.attachments.filter((a) => a.kind === "deliverable" || a.kind === "quality_report").map((a) => a.filename),
+    client_messages: msgs.map((m) => ({ sender_role: m.sender_role, body: m.body, created_at: m.created_at })),
+  };
 }

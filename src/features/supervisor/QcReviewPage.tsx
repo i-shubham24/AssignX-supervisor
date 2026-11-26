@@ -1,15 +1,17 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { checkUpload, cleanText, DELIVERABLE_POLICY, REPORT_POLICY, type UploadPolicy } from "@/lib/input-safety";
+import { rememberSessionFile } from "@/lib/attachment-files";
 import { safeWorkspaceHref } from "@/lib/safe-url";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, FileCheck2, Paperclip, Plus, RotateCcw, Send, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { CheckCircle2, Eye, FileCheck2, Paperclip, Plus, RotateCcw, Send, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { useAction, useProject } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
 import { CATEGORIES, QC_CHECKLISTS, SLA } from "@/lib/config";
 import { formatRelative } from "@/lib/datetime";
 import { cn } from "@/lib/cn";
+import { AttachmentPreviewDialog, type PreviewTarget } from "@/components/portal/AttachmentPreviewDialog";
 import { ErrorState, PageHeader, Panel, SlaClock } from "@/components/portal/kit";
 import { CategoryBadge, Code, SideTag, StatusPill } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
@@ -38,13 +40,21 @@ function Review({ p }: { p: Project }) {
   const me = useMe();
   const navigate = useNavigate();
   const items = QC_CHECKLISTS[p.category];
-  const [qc, setQc] = useState<Omit<QcRecord, "completed_at">>(() => ({ checks: p.qc?.checks ?? {}, custom_checks: p.qc?.custom_checks ?? [], notes: p.qc?.notes ?? "" }));
+  const [qc, setQc] = useState<Omit<QcRecord, "completed_at">>(() => ({
+    checks: p.qc?.checks ?? {},
+    custom_checks: p.qc?.custom_checks ?? [],
+    notes: p.qc?.notes ?? "",
+    originality_pct: p.qc?.originality_pct ?? 97,
+    ai_score_pct: p.qc?.ai_score_pct ?? 3,
+  }));
   const [newCheck, setNewCheck] = useState("");
   const [note, setNote] = useState(p.delivery_note ?? "");
   const [sendBackOpen, setSendBackOpen] = useState(false);
   const [reason, setReason] = useState("");
-  const [originalityPct, setOriginalityPct] = useState(97);
-  const [aiScorePct, setAiScorePct] = useState(3);
+  const [preview, setPreview] = useState<PreviewTarget | null>(null);
+
+  const originalityPct = qc.originality_pct ?? 97;
+  const aiScorePct = qc.ai_score_pct ?? 3;
 
   const save = useAction((next: Omit<QcRecord, "completed_at">) => api.saveQc(p.id, next, me.id), { fallback: "Your check was not saved." });
   // Save checklist edits shortly after the last change, so ticks survive a reload.
@@ -61,7 +71,13 @@ function Review({ p }: { p: Project }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qc]);
 
-  const upload = useAction((v: { name: string; kind: "deliverable" | "quality_report" }) => api.addDeliverable(p.id, v.name, v.kind, me.id), { success: (_r, v) => `${v.name} uploaded.` });
+  const upload = useAction(
+    (v: { file: File; name: string; kind: "deliverable" | "quality_report" }) => {
+      rememberSessionFile(v.name, v.file);
+      return api.addDeliverable(p.id, v.file, v.kind, me.id);
+    },
+    { success: (_r, v) => `${v.name} uploaded.` },
+  );
   const remove = useAction((attId: string) => api.removeAttachment(p.id, attId, me.id));
   // Save the latest checks first, so ticking the last box and delivering at once works.
   const deliver = useAction(async () => {
@@ -127,7 +143,7 @@ function Review({ p }: { p: Project }) {
             ) : null}
           </Panel>
           <Panel title="Doer submission" tone="doer">
-            {submission.length === 0 ? <p className="text-sm text-ink-3">No files. Check the working link.</p> : <FileList files={submission} />}
+            {submission.length === 0 ? <p className="text-sm text-ink-3">No files. Check the working link.</p> : <FileList files={submission} onPreview={setPreview} />}
             {p.doers.filter(isActiveDoer).map((d) => {
               const href = safeWorkspaceHref(d.working_link);
               return href ? (
@@ -187,12 +203,12 @@ function Review({ p }: { p: Project }) {
             <Panel title="Quality report" sub="Attach the originality and AI check report." actions={<SideTag side="client" />}>
               {reports.length ? (
                 <>
-                  <FileList files={reports} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} />
-                  <div className="mt-3 rounded-xl border border-line-card bg-surface-2 p-3 text-xs space-y-2">
+                  <FileList files={reports} onPreview={setPreview} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} />
+                  <div className="mt-3 space-y-2 rounded-xl border border-line-card bg-surface-2 p-3 text-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-ink-2">Authenticity & Originality</span>
                       <span className="rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-bold text-success-ink">
-                        Verified
+                        Saved with QC
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 pt-1 text-[12px]">
@@ -211,42 +227,42 @@ function Review({ p }: { p: Project }) {
                   </div>
                 </>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-ink-3">No report attached yet. An originality scan is required for writing deliverables.</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <label className="text-[11px] font-semibold text-ink-muted">Originality %</label>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={originalityPct}
-                        disabled={locked}
-                        onChange={(e) => setOriginalityPct(Number(e.target.value))}
-                        className="h-8 mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-semibold text-ink-muted">AI Score %</label>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={aiScorePct}
-                        disabled={locked}
-                        onChange={(e) => setAiScorePct(Number(e.target.value))}
-                        className="h-8 mt-1"
-                      />
-                    </div>
+                <p className="mb-3 text-sm text-ink-3">No report attached yet. An originality scan is required for writing deliverables.</p>
+              )}
+              {!locked ? (
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <label className="text-[11px] font-semibold text-ink-muted">Originality %</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={originalityPct}
+                      disabled={locked}
+                      onChange={(e) => edit((q) => ({ ...q, originality_pct: Number(e.target.value) }))}
+                      className="mt-1 h-8"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-ink-muted">AI Score %</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={aiScorePct}
+                      disabled={locked}
+                      onChange={(e) => edit((q) => ({ ...q, ai_score_pct: Number(e.target.value) }))}
+                      className="mt-1 h-8"
+                    />
                   </div>
                 </div>
-              )}
+              ) : null}
               {!locked ? (
                 <UploadButton
                   label="Attach report"
                   policy={REPORT_POLICY}
-                  onPick={(name) => {
-                    upload.mutate({ name, kind: "quality_report" });
+                  onPick={(file, name) => {
+                    upload.mutate({ file, name, kind: "quality_report" });
                     edit((q) => ({ ...q, checks: { ...q.checks, report: true } }));
                   }}
                   busy={upload.isPending}
@@ -258,8 +274,8 @@ function Review({ p }: { p: Project }) {
 
         <div className="space-y-4 lg:col-span-2 2xl:sticky 2xl:top-3 2xl:col-span-1">
           <Panel title="Deliverables" sub="What the client gets. Locked until they approve." tone="client">
-            {deliverables.length ? <FileList files={deliverables} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} /> : <p className="text-sm text-ink-3">Upload the final files.</p>}
-            {!locked ? <UploadButton label="Upload deliverable" policy={DELIVERABLE_POLICY} onPick={(name) => upload.mutate({ name, kind: "deliverable" })} busy={upload.isPending} /> : null}
+            {deliverables.length ? <FileList files={deliverables} onPreview={setPreview} onRemove={locked ? undefined : (a) => remove.mutate(a.id)} /> : <p className="text-sm text-ink-3">Upload the final files.</p>}
+            {!locked ? <UploadButton label="Upload deliverable" policy={DELIVERABLE_POLICY} onPick={(file, name) => upload.mutate({ file, name, kind: "deliverable" })} busy={upload.isPending} /> : null}
           </Panel>
           <Panel title="Delivery note" actions={<SideTag side="client" />}>
             <Textarea value={note} disabled={locked} onChange={(e) => setNote(e.target.value)} rows={4} placeholder="What is included and how to use it." aria-label="Delivery note" />
@@ -301,11 +317,21 @@ function Review({ p }: { p: Project }) {
           <div className="mt-3"><SideTag side="doer" /></div>
         </DialogContent>
       </Dialog>
+
+      <AttachmentPreviewDialog item={preview} open={Boolean(preview)} onOpenChange={(o) => !o && setPreview(null)} />
     </>
   );
 }
 
-function FileList({ files, onRemove }: { files: Attachment[]; onRemove?: (a: Attachment) => void }) {
+function FileList({
+  files,
+  onPreview,
+  onRemove,
+}: {
+  files: Attachment[];
+  onPreview: (target: PreviewTarget) => void;
+  onRemove?: (a: Attachment) => void;
+}) {
   return (
     <ul className="space-y-1.5">
       {files.map((a) => (
@@ -319,6 +345,24 @@ function FileList({ files, onRemove }: { files: Attachment[]; onRemove?: (a: Att
               {(a.size_bytes / 1024 / 1024).toFixed(1)} MB · {a.scan_status === "clean" ? "Scanned clean" : a.scan_status} · {formatRelative(a.created_at)}
             </span>
           </span>
+          <button
+            type="button"
+            onClick={() =>
+              onPreview({
+                id: a.id,
+                filename: a.filename,
+                mime_type: a.mime_type,
+                size_bytes: a.size_bytes,
+                scan_status: a.scan_status,
+                download_url: a.download_url,
+                subtitle: `${a.kind.replace("_", " ")} (${a.uploaded_by_role})`,
+              })
+            }
+            className="rounded-md p-1.5 text-ink-3 hover:bg-hover hover:text-ink"
+            aria-label={`Preview ${a.filename}`}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
           {onRemove ? (
             <button onClick={() => onRemove(a)} className="rounded-md p-1.5 text-ink-3 hover:bg-danger-bg hover:text-danger-ink" aria-label={`Remove ${a.filename}`}>
               <Trash2 className="h-3.5 w-3.5" />
@@ -331,7 +375,7 @@ function FileList({ files, onRemove }: { files: Attachment[]; onRemove?: (a: Att
 }
 
 /** Every file is checked by content before upload; the server checks again and scans it. */
-function UploadButton({ label, onPick, busy, policy }: { label: string; onPick: (name: string) => void; busy: boolean; policy: UploadPolicy }) {
+function UploadButton({ label, onPick, busy, policy }: { label: string; onPick: (file: File, name: string) => void; busy: boolean; policy: UploadPolicy }) {
   const inputId = useId();
   const [checking, setChecking] = useState(false);
   return (
@@ -352,7 +396,7 @@ function UploadButton({ label, onPick, busy, policy }: { label: string; onPick: 
           try {
             const problem = await checkUpload(f, policy);
             if (problem) toast.error(problem);
-            else onPick(cleanText(f.name, 200));
+            else onPick(f, cleanText(f.name, 200));
           } finally {
             setChecking(false);
           }

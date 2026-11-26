@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { Search, Star, UserCheck } from "lucide-react";
+import { AlertTriangle, Search, Star, UserCheck } from "lucide-react";
 import type { CategorySlug, Doer, Project } from "@/types/domain";
 import { useAction, useDoers, useTraining } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
 import { CATEGORIES, CATEGORY_SLUGS, DOER_CONCURRENCY_CAP, LEVEL_CUT } from "@/lib/config";
+import { detectBriefPii } from "@/lib/input-safety";
 import { formatInr, minorToMajorString, parseMajorToMinor, percentOf } from "@/lib/money";
 import { Dialog, DialogContent } from "@/components/ui/overlay";
 import { Button } from "@/components/ui/button";
@@ -85,6 +86,7 @@ export function OfferDialog({ project, open, onOpenChange }: { project: Project;
   const guidance = selected ? percentOf(project.quote_amount_inr ?? 0, LEVEL_CUT[selected.level]) : null;
   const atCap = selected ? selected.active_project_count >= DOER_CONCURRENCY_CAP : false;
   const modules = (training.data ?? []).filter((m) => m.state === "published" && m.audience !== "supervisor");
+  const scopePiiWarnings = useMemo(() => detectBriefPii(scope, project.client.display_name), [scope, project.client.display_name]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -204,6 +206,12 @@ export function OfferDialog({ project, open, onOpenChange }: { project: Project;
                 <Field label={additional ? "This doer's part" : "Scope note"} hint="What this doer will do. No client details.">
                   {({ id, describedBy }) => <Textarea id={id} value={scope} onChange={(e) => setScope(e.target.value)} rows={3} aria-describedby={describedBy} placeholder={additional ? "For example: all landing page copy and FAQ" : "Optional"} />}
                 </Field>
+                {scopePiiWarnings.length ? (
+                  <p className="flex items-start gap-2 rounded-lg border border-warning-dot/40 bg-warning-bg px-3 py-2 text-xs font-medium text-warning-ink">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>Possible identity leak detected ({scopePiiWarnings.join(", ")}). Redact before sending.</span>
+                  </p>
+                ) : null}
                 <Field label="Required training">
                   {({ id }) => (
                     <Select id={id} value={moduleId} onChange={setModuleId} options={[{ value: "none", label: "None" }, ...modules.map((m) => ({ value: m.id, label: m.title }))]} />

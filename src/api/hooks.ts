@@ -4,6 +4,7 @@ import * as api from "./portal";
 import type { Channel, Segment } from "@/types/domain";
 import { toUserError } from "@/lib/user-error";
 import { useSession } from "@/providers/SessionProvider";
+import { env } from "@/lib/env";
 
 /** Every query key lives under one root so a mutation can refresh the whole portal. */
 export const keys = {
@@ -28,9 +29,9 @@ export const keys = {
   disbursements: ["portal", "disbursements"] as const,
 };
 
-// Queues are live operational state: refetch every 30s so SLA badges stay honest
-// until realtime broadcasts replace polling.
-const LIVE = { refetchInterval: 30_000 } as const;
+// Queues stay fresh via realtime broadcasts in live mode, with a periodic safety net.
+const LIVE = { refetchInterval: env.demoMode ? 30_000 : 60_000 } as const;
+const FAST_LIVE = { refetchInterval: env.demoMode ? 15_000 : 45_000 } as const;
 
 export const useOperators = () => useQuery({ queryKey: keys.operators, queryFn: api.fetchOperators });
 /** Projects are scoped to the signed-in operator, and so is their cache key. */
@@ -44,8 +45,8 @@ export const useProject = (id: string) => {
   return useQuery({ queryKey: keys.project(id, actor), queryFn: () => api.fetchProject(id, actor), ...LIVE, retry: false });
 };
 export const useMessages = (id: string, channel: Channel) =>
-  useQuery({ queryKey: keys.messages(id, channel), queryFn: () => api.fetchMessages(id, channel), refetchInterval: 15_000 });
-export const useHeld = () => useQuery({ queryKey: keys.held, queryFn: api.fetchHeld, refetchInterval: 15_000 });
+  useQuery({ queryKey: keys.messages(id, channel), queryFn: () => api.fetchMessages(id, channel), ...FAST_LIVE });
+export const useHeld = () => useQuery({ queryKey: keys.held, queryFn: api.fetchHeld, ...FAST_LIVE });
 export const useDoers = () => useQuery({ queryKey: keys.doers, queryFn: api.fetchDoers });
 export const useProjectHistory = (id: string) => {
   const actor = useActor();

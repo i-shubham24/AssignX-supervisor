@@ -40,7 +40,14 @@ const TicketsPage = lazyWithRetry(() => import("@/features/support/TicketsPage")
 const TicketDetailPage = lazyWithRetry(() => import("@/features/support/TicketDetailPage"));
 
 function RequireSession() {
-  const { operator } = useSession();
+  const { operator, loading } = useSession();
+  if (loading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-canvas p-8" aria-busy="true" aria-label="Checking session">
+        <div className="skeleton h-40 w-full max-w-sm rounded-2xl" />
+      </div>
+    );
+  }
   if (!operator) return <Navigate to="/sign-in" replace />;
   return <Outlet />;
 }

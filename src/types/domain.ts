@@ -103,7 +103,47 @@ export interface QcRecord {
   /** Free-form checks, used by "Something else" where the supervisor defines them. */
   custom_checks: { label: string; done: boolean }[];
   notes: string;
+  originality_pct?: number | null;
+  ai_score_pct?: number | null;
   completed_at: string | null;
+}
+
+export interface DoerRating {
+  project_doer_id: string;
+  doer_id: string;
+  quality: number;
+  timeliness: number;
+  communication: number;
+  notes: string;
+  rated_by: string;
+  rated_at: string;
+}
+
+export interface DoerConductEntry {
+  id: string;
+  action: "review_cleared" | "warning" | "suspended" | "demoted" | "promoted" | "removed" | "restored";
+  reason: string;
+  actor_label: string;
+  created_at: string;
+}
+
+export interface ChargebackEvidencePack {
+  generated_at: string;
+  project_code: string;
+  title: string;
+  category: CategorySlug;
+  status: ProjectStatus;
+  invoice_number: string | null;
+  razorpay_payment_id: string | null;
+  quote_amount: Minor | null;
+  quote_currency: Currency;
+  paid_at: string | null;
+  delivered_at: string | null;
+  approved_at: string | null;
+  brief: string;
+  delivery_note: string | null;
+  deliverables: string[];
+  client_messages: { sender_role: SenderRole; body: string; created_at: string }[];
 }
 
 export interface Project {
@@ -158,6 +198,18 @@ export interface Project {
   updated_at: string;
 
   doers: ProjectDoer[];
+  /** Redacted, client-PII-free brief shown to doers on Dolancer (PRD 10.1, BR-001). */
+  doer_brief?: string | null;
+  /** Client star review recorded at approval. */
+  client_rating?: number | null;
+  client_review_note?: string | null;
+  /** Supervisor post-completion ratings for active/completed doers (PRD 10.10). */
+  doer_ratings?: DoerRating[];
+  /** True when the client requested a 4th+ paid change awaiting a QQD quote. */
+  paid_revision_pending?: boolean;
+  /** Invoice and payment identifiers for billing & chargeback defense (PRD 14.6, 17.4). */
+  invoice_number?: string | null;
+  razorpay_payment_id?: string | null;
   /** Failed direct offers. Two unlock raise-and-retry and the open pool (FR-SV-008). */
   failed_offer_count: number;
   in_open_pool: boolean;
@@ -192,6 +244,10 @@ export interface Attachment {
   uploaded_by_role: "client" | "coordinator" | "expert";
   scan_status: "pending" | "clean" | "infected";
   client_visible: boolean;
+  /** Whether a brief file is cleared for doer viewing after redaction checks. */
+  doer_visible?: boolean;
+  /** Signed or blob URL when available in live mode or current browser session. */
+  download_url?: string | null;
   created_at: string;
   /** Snapshots only: the note shown to the client beside the image. */
   note?: string;
@@ -261,6 +317,10 @@ export interface Doer {
   last_active_at: string;
   joined_at: string;
   status: "active" | "suspended" | "removed";
+  warning_count?: number;
+  suspension_until?: string | null;
+  review_flagged?: boolean;
+  conduct_log?: DoerConductEntry[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -276,7 +336,7 @@ export interface VerificationCase {
   fields: CategorySlug[];
   submitted_at: string;
   stage: "document_check" | "awaiting_supervisor" | "supervisor_call" | "verified" | "rejected";
-  documents: { kind: "pan" | "photo_id"; label: string; legible: boolean | null; name_matches: boolean | null }[];
+  documents: { kind: "pan" | "photo_id"; label: string; legible: boolean | null; name_matches: boolean | null; download_url?: string | null }[];
   payout_method: "bank" | "upi" | null;
   payout_name_matches: boolean | null;
   assigned_supervisor_id: string | null;
@@ -325,6 +385,10 @@ export interface RefundRequest {
   liability_decision: ProjectDoer["liability_decision"] | "company_process";
   liability_reason: string | null;
   liability_decided_by: string | null;
+  /** Gateway fee deducted on pre-doer cancellation refund (PRD 14.4). */
+  gateway_fee_inr?: Minor;
+  /** Credits restored back to client balance alongside refund (FR-CR-005). */
+  credits_restored_inr?: Minor;
   approved_at: string;
   status: "awaiting_execution" | "executed" | "failed";
   executed_by: string | null;

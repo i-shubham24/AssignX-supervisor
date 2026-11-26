@@ -18,9 +18,14 @@
     "check:copy": "node scripts/copy-guard.mjs",
     "check:security": "node scripts/security-scan.mjs",
     "check:dist": "node scripts/dist-scan.mjs",
+    "test:routes": "node scripts/qa-phase1-routes.mjs",
+    "test:workflows": "node scripts/run-ts.mjs scripts/qa-phase2-workflows.ts",
+    "test:responsive": "node scripts/qa-phase3-responsive.mjs",
     "test:webhooks": "node scripts/qa-phase4-webhooks.mjs",
+    "test:security": "node scripts/run-ts.mjs scripts/qa-phase5-security-matrix.ts",
+    "test:middleware": "node scripts/qa-phase6-middleware-contract.mjs",
     "audit": "npm audit --omit=dev --audit-level=moderate",
-    "verify": "npm run typecheck && npm run lint && npm run check:secrets && npm run check:copy && npm run check:security && npm run test:webhooks && npm run build:demo && npm run check:dist"
+    "verify": "npm run typecheck && npm run lint && npm run check:secrets && npm run check:copy && npm run check:security && npm run test:routes && npm run test:workflows && npm run test:responsive && npm run test:webhooks && npm run test:security && npm run test:middleware && npm run build:demo && npm run check:dist"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

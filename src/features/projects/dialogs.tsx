@@ -82,16 +82,24 @@ export function ProgressDialog({ project, open, onOpenChange }: { project: Proje
 
 export function SnapshotDialog({ project, open, onOpenChange }: { project: Project; open: boolean; onOpenChange: (v: boolean) => void }) {
   const me = useMe();
-  const [file, setFile] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const [note, setNote] = useState("");
-  const post = useAction(() => api.postSnapshot(project.id, file ?? "snapshot.png", note, me.id), {
-    success: "Snapshot sent to the client.",
-    onSuccess: () => {
-      onOpenChange(false);
-      setFile(null);
-      setNote("");
+  const post = useAction(
+    async () => {
+      if (!file) throw new Error("PORTAL: Choose an image first.");
+      const { rememberSessionFile } = await import("@/lib/attachment-files");
+      rememberSessionFile(file.name, file);
+      return api.postSnapshot(project.id, file, note, me.id);
     },
-  });
+    {
+      success: "Snapshot sent to the client.",
+      onSuccess: () => {
+        onOpenChange(false);
+        setFile(null);
+        setNote("");
+      },
+    },
+  );
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -106,7 +114,7 @@ export function SnapshotDialog({ project, open, onOpenChange }: { project: Proje
       >
         <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line-card bg-surface-2 px-4 py-8 text-center transition-colors hover:border-client/50">
           <ImagePlus className="h-6 w-6 text-ink-3" aria-hidden="true" />
-          <span className="mt-2 text-sm font-semibold">{file ?? "Choose an image"}</span>
+          <span className="mt-2 text-sm font-semibold">{file?.name ?? "Choose an image"}</span>
           <span className="mt-0.5 text-xs text-ink-3">A flat PNG, JPG or WebP image.</span>
           <input
             type="file"
@@ -124,7 +132,7 @@ export function SnapshotDialog({ project, open, onOpenChange }: { project: Proje
               // Redraw strips authorship, camera and location metadata (BR-019).
               try {
                 const clean = await redrawImage(f);
-                setFile(clean.name);
+                setFile(clean);
               } catch {
                 toast.error("Could not read that image. Export it again as PNG or JPG.");
               }

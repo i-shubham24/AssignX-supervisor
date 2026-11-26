@@ -1,4 +1,4 @@
-import { ReceiptText } from "lucide-react";
+import { Download, ReceiptText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAction, useRefunds } from "@/api/hooks";
 import * as api from "@/api/portal";
@@ -6,7 +6,9 @@ import { useMe } from "@/providers/SessionProvider";
 import { EmptyState, ErrorState, KeyValue, Money, PageHeader, Panel } from "@/components/portal/kit";
 import { CategoryBadge, Code, Pill } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
+import { triggerFileDownload } from "@/lib/attachment-files";
 import { formatDateTime, formatRelative } from "@/lib/datetime";
+import { formatInr } from "@/lib/money";
 import type { RefundRequest } from "@/types/domain";
 
 const LIABILITY: Record<string, string> = {
@@ -58,6 +60,14 @@ export default function RefundsPage() {
 function RefundCard({ r }: { r: RefundRequest }) {
   const me = useMe();
   const exec = useAction(() => api.executeRefund(r.id, me.id), { success: "Refund started. The project is now cancelled." });
+  const exportPack = useAction(
+    async () => {
+      const pack = await api.fetchChargebackEvidence(r.project.id, me.id);
+      triggerFileDownload(new Blob([JSON.stringify(pack, null, 2)], { type: "application/json;charset=utf-8" }), `chargeback-${r.project.code}.json`);
+      return pack;
+    },
+    { success: `Downloaded evidence bundle for ${r.project.code}.` },
+  );
   return (
     <section className="rounded-2xl border border-line-card bg-surface p-5 shadow-soft-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -78,8 +88,15 @@ function RefundCard({ r }: { r: RefundRequest }) {
               { k: "Approved", v: formatDateTime(r.approved_at) },
               { k: "Doer fault", v: r.liability_decision ? `${LIABILITY[r.liability_decision]}${r.liability_decided_by ? ` (${r.liability_decided_by})` : ""}` : "Waiting for the supervisor" },
               { k: "Client paid", v: <Money amount={r.project.quote_amount} currency={r.project.quote_currency} /> },
+              ...(r.gateway_fee_inr ? [{ k: "Gateway fee deduction", v: formatInr(r.gateway_fee_inr) }] : []),
+              ...(r.credits_restored_inr ? [{ k: "Credits restored", v: formatInr(r.credits_restored_inr) }] : []),
             ]}
           />
+          <div className="mt-3">
+            <Button size="xs" variant="outline" loading={exportPack.isPending} onClick={() => exportPack.mutate(undefined)}>
+              <Download /> Chargeback evidence pack
+            </Button>
+          </div>
         </div>
         <div className="flex flex-col justify-between rounded-xl border border-line-card bg-surface-2 p-4">
           <div>

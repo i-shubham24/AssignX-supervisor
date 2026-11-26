@@ -62,10 +62,13 @@ if (supabasePublishableKey) {
   assertNotPrivileged("VITE_SUPABASE_PUBLISHABLE_KEY", supabasePublishableKey);
 }
 
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+
 export const env = {
   demoMode,
   /** A production bundle running on sample data: show a permanent warning. */
   demoInProduction: demoMode && !import.meta.env.DEV,
+  apiBaseUrl,
   supabaseUrl,
   supabasePublishableKey,
 } as const;

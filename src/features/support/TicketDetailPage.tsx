@@ -50,6 +50,8 @@ function Detail({ t }: { t: Ticket }) {
   const reply = useAction(() => api.replyTicket(t.id, body, me.id, internal), { success: internal ? "Note added." : "Reply sent.", onSuccess: () => setBody("") });
   const update = useAction((patch: Partial<Pick<Ticket, "status" | "priority" | "owner_id">>) => api.updateTicket(t.id, patch, me.id), { success: "Ticket updated." });
   const resolve = useAction(() => api.resolveTicket(t.id, resolution, me.id), { success: "Ticket resolved.", onSuccess: () => setResolveOpen(false) });
+  const qqdLead = operators.find((o) => o.segment === "qqd" && o.is_lead) ?? operators.find((o) => o.segment === "qqd");
+  const doerOnProject = project?.doers.find((d) => d.status !== "declined" && d.status !== "expired");
 
   return (
     <>
@@ -85,7 +87,23 @@ function Detail({ t }: { t: Ticket }) {
               <div><b>This looks like academic work.</b> We do not take it on. Decline politely and close the ticket.</div>
             </div>
           ) : null}
-          {PATHS[t.category] ? <p className="rounded-2xl border border-line-card bg-surface-2 p-4 text-[13px] text-ink-muted"><b className="text-ink-2">Next steps:</b> {PATHS[t.category]}</p> : null}
+          {PATHS[t.category] ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-line-card bg-surface-2 p-4 text-[13px] text-ink-muted">
+              <span><b className="text-ink-2">Next steps:</b> {PATHS[t.category]}</span>
+              <div className="flex flex-wrap gap-2">
+                {open && (t.category === "conduct" || t.category === "doer_issue") && qqdLead && t.owner_id !== qqdLead.id ? (
+                  <Button size="xs" variant="outline" loading={update.isPending} onClick={() => update.mutate({ status: "awaiting_internal", owner_id: qqdLead.id })}>
+                    Send to QQD ({qqdLead.full_name})
+                  </Button>
+                ) : null}
+                {me.segment === "qqd" && doerOnProject ? (
+                  <Button asChild size="xs" variant="primary">
+                    <Link to={`/doers/${doerOnProject.doer_id}`}>Open doer conduct ({doerOnProject.doer_code}) <ArrowRight /></Link>
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <Panel title="Conversation" padded={false}>
             <ol className="space-y-3 p-4">

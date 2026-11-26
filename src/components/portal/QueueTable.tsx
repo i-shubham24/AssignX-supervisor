@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useUiStore } from "@/stores/useUiStore";
 import { EmptyState, ErrorState, SkeletonRows } from "./kit";
 
 export interface Column<T> {
@@ -44,6 +45,7 @@ export function QueueTable<T>({
   caption: string;
 }) {
   const navigate = useNavigate();
+  const density = useUiStore((s) => s.density);
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 } | null>(null);
 
   const sorted = useMemo(() => {
@@ -99,7 +101,12 @@ export function QueueTable<T>({
                   key={c.key}
                   scope="col"
                   style={c.width ? { width: c.width } : undefined}
-                  className={cn("h-9 px-4 text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3", c.align === "right" && "text-right", c.className)}
+                  className={cn(
+                    density === "compact" ? "h-8 px-3" : "h-9 px-4",
+                    "text-[11px] font-bold uppercase tracking-[0.06em] text-ink-3",
+                    c.align === "right" && "text-right",
+                    c.className,
+                  )}
                   aria-sort={active ? (sort?.dir === 1 ? "ascending" : "descending") : undefined}
                 >
                   {c.sort ? (
@@ -149,7 +156,15 @@ export function QueueTable<T>({
                 )}
               >
                 {columns.map((c) => (
-                  <td key={c.key} className={cn("px-4 py-3 align-middle text-[13.5px]", c.align === "right" && "text-right", c.className)}>
+                  <td
+                    key={c.key}
+                    className={cn(
+                      density === "compact" ? "px-3 py-2 text-[13px]" : "px-4 py-3 text-[13.5px]",
+                      "align-middle",
+                      c.align === "right" && "text-right",
+                      c.className,
+                    )}
+                  >
                     {c.cell(row)}
                   </td>
                 ))}

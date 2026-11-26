@@ -10,6 +10,7 @@ import { KpiStrip } from "@/features/overview/widgets";
 import { CATEGORIES, RESERVE_PERCENT_OF_MARGIN, SLA, TDS_THRESHOLD_INR } from "@/lib/config";
 import { formatInr, sumMinor } from "@/lib/money";
 import { formatDateTime, formatRelative } from "@/lib/datetime";
+import { useDisbursementsRealtime } from "@/lib/realtime";
 import type { DisbursementItem, DisbursementLine } from "@/types/domain";
 
 /**
@@ -17,6 +18,7 @@ import type { DisbursementItem, DisbursementLine } from "@/types/domain";
  * execution is logged immutably; records are never edited, only reversed.
  */
 export default function DisbursementPage() {
+  useDisbursementsRealtime();
   const { data, isLoading, error, refetch } = useDisbursements();
   const items = data ?? [];
   const lines = items.flatMap((i) => i.lines);

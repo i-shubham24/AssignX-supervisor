@@ -30,6 +30,37 @@ export function cleanText(value: string, max: number): string {
   return value.normalize("NFC").replace(HIDDEN_CHARS, "").slice(0, max);
 }
 
+/**
+ * Flags potential client contact details or identity reveals inside a brief or scope
+ * note before it is shared with a doer on Dolancer (PRD 10.1, BR-001).
+ */
+export function detectBriefPii(text: string, clientName?: string): string[] {
+  const warnings: string[] = [];
+  if (!text.trim()) return warnings;
+  if (/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text)) {
+    warnings.push("email address");
+  }
+  if (/(?:\+?\d[\d\s\-()]{7,}\d)/.test(text)) {
+    warnings.push("phone number");
+  }
+  if (/(?:whatsapp|telegram|signal|skype|instagram\.com|t\.me|linkedin\.com\/in)/i.test(text)) {
+    warnings.push("external messaging or social handle");
+  }
+  if (/\bhttps?:\/\/\S+/i.test(text)) {
+    warnings.push("direct external link");
+  }
+  if (clientName) {
+    const parts = clientName
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length >= 3);
+    if (parts.some((part) => new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text))) {
+      warnings.push("client name");
+    }
+  }
+  return warnings;
+}
+
 /* ------------------------------------------------------------------ */
 /* Files                                                               */
 /* ------------------------------------------------------------------ */

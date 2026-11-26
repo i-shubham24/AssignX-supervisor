@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { BadgeCheck, FileText } from "lucide-react";
+import { BadgeCheck, Eye, FileText } from "lucide-react";
 import { useAction, useOperators, useVerification } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
+import { AttachmentPreviewDialog, type PreviewTarget } from "@/components/portal/AttachmentPreviewDialog";
 import { EmptyState, PageHeader, Panel, Segmented } from "@/components/portal/kit";
 import { CategoryBadge, Code, Pill } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ function VerificationCard({ v }: { v: VerificationCase }) {
   const editable = v.stage === "document_check" || v.stage === "awaiting_supervisor";
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const reject = useAction(() => api.decideVerification(v.id, false, reason, me.id), { success: "Rejected. The doer sees your reason and can upload again.", onSuccess: () => setRejectOpen(false) });
 
   return (
@@ -73,7 +75,34 @@ function VerificationCard({ v }: { v: VerificationCase }) {
       <div className="mt-4 space-y-2">
         {docs.map((d, i) => (
           <div key={d.kind} className="rounded-xl border border-line-card p-3">
-            <div className="mb-1 flex items-center gap-2 text-[13px] font-bold"><FileText className="h-4 w-4 text-ink-3" aria-hidden="true" />{d.label}<span className="ml-auto text-[11px] font-medium text-ink-3">Encrypted</span></div>
+            <div className="mb-1 flex items-center gap-2 text-[13px] font-bold">
+              <FileText className="h-4 w-4 text-ink-3" aria-hidden="true" />
+              {d.label}
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="ml-auto"
+                onClick={() =>
+                  setPreview({
+                    id: `${v.id}-${d.kind}`,
+                    filename: `${v.doer_code.toLowerCase()}-${d.kind}.pdf`,
+                    mime_type: "application/pdf",
+                    download_url: d.download_url ?? null,
+                    subtitle: `Encrypted KYC document for ${v.doer_code} (QQD review)`,
+                    demoLines: [
+                      `Document type: ${d.label}`,
+                      `Account holder name: ${v.full_name}`,
+                      `Declared name on card: ${v.declared_name}`,
+                      `Payout method: ${v.payout_method ?? "Not set"}`,
+                      "Access: Temporary scoped viewer. Raw file purged 30 days after verification (BR-024).",
+                    ],
+                  })
+                }
+              >
+                <Eye className="h-3.5 w-3.5" /> View document
+              </Button>
+            </div>
             <div className="flex flex-wrap gap-x-4 gap-y-2">
               <Checkbox disabled={!editable} checked={Boolean(d.legible)} onChange={(val) => setDocs((x) => x.map((y, j) => (j === i ? { ...y, legible: val } : y)))} label="Legible and valid" />
               <Checkbox disabled={!editable} checked={Boolean(d.name_matches)} onChange={(val) => setDocs((x) => x.map((y, j) => (j === i ? { ...y, name_matches: val } : y)))} label="Name matches" />
@@ -82,6 +111,7 @@ function VerificationCard({ v }: { v: VerificationCase }) {
         ))}
         <Checkbox disabled={!editable} checked={payoutOk} onChange={setPayoutOk} label={`Payout details done and name matches (${v.payout_method ?? "not set"})`} />
       </div>
+      <AttachmentPreviewDialog item={preview} open={Boolean(preview)} onOpenChange={(o) => !o && setPreview(null)} />
       {editable ? (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Select className="w-full sm:w-56" aria-label="Onboarding supervisor" value={sup} onChange={setSup} placeholder="Onboarding supervisor" options={supervisors.map((s) => ({ value: s.id, label: s.full_name, hint: s.categories.join(", ") }))} />

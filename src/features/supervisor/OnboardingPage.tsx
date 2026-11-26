@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { BadgeCheck, Check, FileText, Phone, X } from "lucide-react";
+import { BadgeCheck, Check, Eye, FileText, Phone, X } from "lucide-react";
 import { useAction, useVerification } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
+import { AttachmentPreviewDialog, type PreviewTarget } from "@/components/portal/AttachmentPreviewDialog";
 import { EmptyState, PageHeader, Panel } from "@/components/portal/kit";
 import { CategoryBadge, Code, Pill } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,7 @@ function CaseCard({ v }: { v: VerificationCase }) {
   const [terms, setTerms] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
+  const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const decide = useAction((approve: boolean) => api.decideVerification(v.id, approve, reason, me.id), {
     success: (_r, approve) => (approve ? `${v.doer_code} verified at Level 1.` : "Rejected. The doer will see your reason."),
   });
@@ -75,10 +77,34 @@ function CaseCard({ v }: { v: VerificationCase }) {
           <div key={d.kind} className="flex items-center gap-2 rounded-xl border border-line-card bg-surface-2 px-3 py-2 text-[12.5px]">
             <FileText className="h-4 w-4 text-ink-3" aria-hidden="true" />
             <span className="flex-1 font-semibold">{d.label}</span>
+            <button
+              type="button"
+              onClick={() =>
+                setPreview({
+                  id: `${v.id}-${d.kind}`,
+                  filename: `${v.doer_code.toLowerCase()}-${d.kind}.pdf`,
+                  mime_type: "application/pdf",
+                  download_url: d.download_url ?? null,
+                  subtitle: `Identity document for ${v.doer_code} (Supervisor onboarding call)`,
+                  demoLines: [
+                    `Document type: ${d.label}`,
+                    `Applicant: ${v.full_name}`,
+                    `Declared name: ${v.declared_name}`,
+                    `QQD legible check: ${d.legible ? "Passed" : "Pending"}`,
+                    `QQD name match: ${d.name_matches ? "Confirmed" : "Pending"}`,
+                  ],
+                })
+              }
+              className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink"
+              aria-label={`View ${d.label}`}
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
             {d.legible && d.name_matches ? <Check className="h-4 w-4 text-success-ink" aria-label="Checked by QQD" /> : <X className="h-4 w-4 text-danger-ink" aria-label="Not confirmed" />}
           </div>
         ))}
       </div>
+      <AttachmentPreviewDialog item={preview} open={Boolean(preview)} onOpenChange={(o) => !o && setPreview(null)} />
       <p className="mt-2 text-xs text-ink-3">Payout by {v.payout_method ?? "not set"}, account name {v.payout_name_matches ? "matches" : "not confirmed"}.</p>
       <div className="mt-4 space-y-1 rounded-xl border border-line-card p-3">
         <Checkbox checked={called} onChange={setCalled} label="Spoke with the doer" description="Video or voice, on the company line" />

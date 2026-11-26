@@ -1,15 +1,16 @@
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowRight, CalendarClock, Info, Paperclip, Send } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarClock, Eye, Info, Paperclip, Send } from "lucide-react";
 import { useAction, useProject, useRateBands } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
-import { CATEGORIES, QUOTE_NOTE_MAX, SLA, URGENCY } from "@/lib/config";
+import { CATEGORIES, FREE_REVISIONS, QUOTE_NOTE_MAX, SLA, URGENCY } from "@/lib/config";
 import { formatDateTime, formatRelative, HOUR, hoursToLabel } from "@/lib/datetime";
 import { formatInr, formatMoney, parseMajorToMinor } from "@/lib/money";
 import { DEMO_FX_TO_INR } from "@/demo/seed";
 import { cn } from "@/lib/cn";
 import { env } from "@/lib/env";
+import { AttachmentPreviewDialog, type PreviewTarget } from "@/components/portal/AttachmentPreviewDialog";
 import { DemoNote, ErrorState, KeyValue, PageHeader, Panel, SlaClock } from "@/components/portal/kit";
 import { CategoryBadge, Code, Pill, SideTag, StatusPill, UrgencyPill } from "@/components/portal/pills";
 import { Button } from "@/components/ui/button";
@@ -37,7 +38,10 @@ function Composer({ p }: { p: Project }) {
   const [duration, setDuration] = useState<string>("72");
   const [note, setNote] = useState(p.quote_note ?? "");
   const [changing, setChanging] = useState(false);
+  const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const currency = p.client.currency;
+
+  const isPaidRevisionTarget = p.status === "delivered" && (p.revision_count >= FREE_REVISIONS || Boolean(p.paid_revision_pending));
 
   const send = useAction(
     () => {
@@ -45,9 +49,10 @@ function Composer({ p }: { p: Project }) {
       const costMinor = parseMajorToMinor(cost);
       if (minor === null || minor <= 0) throw new Error(`PORTAL: Enter the quote in ${currency}, for example 420.`);
       if (costMinor === null || costMinor <= 0) throw new Error("PORTAL: Enter the doer cost in INR.");
-      return api.sendQuote(p.id, { amount: minor, currency, delivery_duration_hours: Number(duration), note, expected_doer_cost_inr: costMinor }, me.id);
+      const payload = { amount: minor, currency, delivery_duration_hours: Number(duration), note, expected_doer_cost_inr: costMinor };
+      return isPaidRevisionTarget ? api.sendPaidRevisionQuote(p.id, payload, me.id) : api.sendQuote(p.id, payload, me.id);
     },
-    { success: () => (p.status === "awaiting_payment" ? "Quote updated. The client is told." : "Quote sent to the client."), onSuccess: () => setChanging(false) },
+    { success: () => (isPaidRevisionTarget ? "Paid revision quote sent to the client." : p.status === "awaiting_payment" ? "Quote updated. The client is told." : "Quote sent to the client."), onSuccess: () => setChanging(false) },
   );
   const reopen = useAction(() => api.reopenQuote(p.id, me.id), { success: "Back in the quote queue." });
   const pay = useAction(() => api.demo.clientPays(p.id), { success: "Demo: client paid. Project moved to assignment." });
@@ -65,7 +70,7 @@ function Composer({ p }: { p: Project }) {
 
   const expired = p.status === "awaiting_payment" && p.quote_expires_at !== null && new Date(p.quote_expires_at).getTime() <= Date.now();
   const cancelledExpired = p.status === "cancelled" && p.cancellation_reason === "quote_expired";
-  const quoted = p.status !== "awaiting_quote" && !changing;
+  const quoted = p.status !== "awaiting_quote" && !isPaidRevisionTarget && !changing;
 
   return (
     <>
@@ -110,10 +115,16 @@ function Composer({ p }: { p: Project }) {
             {p.attachments.length ? (
               <div className="mt-4 flex flex-wrap gap-2">
                 {p.attachments.map((a) => (
-                  <span key={a.id} className="inline-flex items-center gap-1.5 rounded-lg border border-line-card bg-surface-2 px-2.5 py-1.5 text-xs font-medium">
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setPreview({ id: a.id, filename: a.filename, mime_type: a.mime_type, size_bytes: a.size_bytes, scan_status: a.scan_status, download_url: a.download_url, subtitle: `${a.kind} attachment` })}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line-card bg-surface-2 px-2.5 py-1.5 text-xs font-medium hover:border-line"
+                  >
                     <Paperclip className="h-3.5 w-3.5 text-ink-3" aria-hidden="true" />
                     {a.filename}
-                  </span>
+                    <Eye className="h-3.5 w-3.5 text-ink-3" aria-hidden="true" />
+                  </button>
                 ))}
               </div>
             ) : null}
@@ -187,7 +198,12 @@ function Composer({ p }: { p: Project }) {
               ) : null}
             </Panel>
           ) : (
-            <Panel title={changing ? "Change the quote" : "Set the quote"} actions={changing ? <Button size="xs" variant="ghost" onClick={() => setChanging(false)}>Cancel</Button> : null}>
+            <Panel title={isPaidRevisionTarget ? "Set paid revision quote" : changing ? "Change the quote" : "Set the quote"} actions={changing ? <Button size="xs" variant="ghost" onClick={() => setChanging(false)}>Cancel</Button> : null}>
+              {isPaidRevisionTarget && p.client_revision_reason ? (
+                <p className="mb-3 rounded-xl bg-warning-bg p-3 text-xs text-warning-ink">
+                  <b>Revision request (free limit reached):</b> {p.client_revision_reason}
+                </p>
+              ) : null}
               <div className="space-y-4">
                 <Field label={`Client quote (${currency})`} required hint="One fixed price, paid upfront.">
                   {({ id, describedBy }) => (
@@ -244,6 +260,7 @@ function Composer({ p }: { p: Project }) {
           )}
         </div>
       </div>
+      <AttachmentPreviewDialog item={preview} open={Boolean(preview)} onOpenChange={(o) => !o && setPreview(null)} />
     </>
   );
 }

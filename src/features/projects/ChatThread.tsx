@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, EyeOff, Lock, Paperclip, SendHorizontal, ShieldAlert, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, Lock, Paperclip, SendHorizontal, ShieldAlert, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Channel, Message, Project } from "@/types/domain";
 import { EMPTY, useAction, useMessages } from "@/api/hooks";
@@ -7,6 +7,8 @@ import * as api from "@/api/portal";
 import { useMe } from "@/providers/SessionProvider";
 import { CATEGORIES, CLIENT_LABEL, MESSAGE_MAX, SLA } from "@/lib/config";
 import { formatDateTime, formatTime } from "@/lib/datetime";
+import { rememberSessionFile } from "@/lib/attachment-files";
+import { AttachmentPreviewDialog, type PreviewTarget } from "@/components/portal/AttachmentPreviewDialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/field";
 import { SlaClock, SkeletonRows, ErrorState, EmptyState } from "@/components/portal/kit";
@@ -31,7 +33,8 @@ export function ChatThread({ project, channel, className }: { project: Project; 
   useThreadRealtime(project.id, channel);
   const listRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
-  const [files, setFiles] = useState<string[]>([]);
+  const [files, setFiles] = useState<File[]>([]);
+  const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const readOnly = project.status === "completed" || project.status === "cancelled";
   // Mirrors the backend posting rules, so nobody sees a composer that will refuse them.
   const blockedReason =
@@ -49,6 +52,7 @@ export function ChatThread({ project, channel, className }: { project: Project; 
     (body: string) => {
       const wait = sendLimiter.take();
       if (wait) throw new Error(`PORTAL: You are sending too fast. Wait ${Math.ceil(wait / 1000)} seconds.`);
+      for (const f of files) rememberSessionFile(cleanText(f.name, 200), f);
       return api.sendMessage(project.id, channel, body, me.id, files);
     },
     {
@@ -111,6 +115,7 @@ export function ChatThread({ project, channel, className }: { project: Project; 
                     m={m}
                     mine={m.sender_id === me.id}
                     onModerate={(decision) => moderate.mutate({ id: m.id, decision })}
+                    onPreview={setPreview}
                     busy={moderate.isPending && moderate.variables?.id === m.id}
                   />
                 ))}
@@ -150,10 +155,10 @@ export function ChatThread({ project, channel, className }: { project: Project; 
             {files.length ? (
               <div className="flex flex-wrap gap-1.5 px-3 pb-1">
                 {files.map((f) => (
-                  <span key={f} className="inline-flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11.5px] font-medium">
+                  <span key={f.name} className="inline-flex items-center gap-1 rounded-md bg-subtle px-2 py-1 text-[11.5px] font-medium">
                     <Paperclip className="h-3 w-3" aria-hidden="true" />
-                    {f}
-                    <button type="button" className="ml-0.5 text-ink-3 hover:text-danger-ink" aria-label={`Remove ${f}`} onClick={() => setFiles((x) => x.filter((y) => y !== f))}>
+                    {cleanText(f.name, 200)}
+                    <button type="button" className="ml-0.5 text-ink-3 hover:text-danger-ink" aria-label={`Remove ${f.name}`} onClick={() => setFiles((x) => x.filter((y) => y.name !== f.name))}>
                       ×
                     </button>
                   </span>
@@ -175,7 +180,7 @@ export function ChatThread({ project, channel, className }: { project: Project; 
                   const problem = await checkUpload(f, CHAT_POLICY);
                   if (problem) toast.error(problem);
                   else if (files.length >= 5) toast.error("Attach up to five files per message.");
-                  else setFiles((x) => [...x, cleanText(f.name, 200)]);
+                  else setFiles((x) => [...x.filter((y) => y.name !== f.name), f]);
                 }}
               />
               <SideTag side={isClient ? "client" : "doer"} />
@@ -190,11 +195,24 @@ export function ChatThread({ project, channel, className }: { project: Project; 
           <p className="mt-1.5 px-1 text-[11px] text-ink-3">Enter to send. Shift+Enter for a new line.</p>
         </form>
       )}
+      <AttachmentPreviewDialog item={preview} open={Boolean(preview)} onOpenChange={(o) => !o && setPreview(null)} />
     </div>
   );
 }
 
-function MessageRow({ m, mine, onModerate, busy }: { m: Message; mine: boolean; onModerate: (d: "approve" | "remove") => void; busy: boolean }) {
+function MessageRow({
+  m,
+  mine,
+  onModerate,
+  onPreview,
+  busy,
+}: {
+  m: Message;
+  mine: boolean;
+  onModerate: (d: "approve" | "remove") => void;
+  onPreview: (target: PreviewTarget) => void;
+  busy: boolean;
+}) {
   if (m.sender_role === "system") {
     return (
       <li className="flex items-center gap-3 py-1 text-[10.5px] font-bold uppercase tracking-[0.08em] text-ink-3">
@@ -230,10 +248,26 @@ function MessageRow({ m, mine, onModerate, busy }: { m: Message; mine: boolean; 
           {m.attachments.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {m.attachments.map((a) => (
-                <span key={a.id} className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium", mine ? "bg-white/10" : "bg-subtle")}>
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() =>
+                    onPreview({
+                      id: a.id,
+                      filename: a.filename,
+                      mime_type: a.mime_type,
+                      size_bytes: a.size_bytes,
+                      scan_status: a.scan_status,
+                      download_url: a.download_url,
+                      subtitle: `Chat attachment (${m.sender_label})`,
+                    })
+                  }
+                  className={cn("inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11.5px] font-medium hover:underline", mine ? "bg-white/10" : "bg-subtle")}
+                >
                   <Paperclip className="h-3 w-3" aria-hidden="true" />
                   {a.filename}
-                </span>
+                  <Eye className="ml-0.5 h-3 w-3 opacity-75" aria-hidden="true" />
+                </button>
               ))}
             </div>
           ) : null}

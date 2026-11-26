@@ -50,6 +50,11 @@
   [hidden] {
     display: none !important;
   }
+
+  :root[data-density="compact"] main > div {
+    padding-top: 0.5rem;
+    padding-bottom: 2.5rem;
+  }
 }
 
 @layer components {

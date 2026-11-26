@@ -14,6 +14,7 @@ import { useBadges } from "@/features/shell/useBadges";
 import { useAction, useNotifications } from "@/api/hooks";
 import * as api from "@/api/portal";
 import { formatRelative } from "@/lib/datetime";
+import { useNotificationsRealtime } from "@/lib/realtime";
 import { Avatar } from "@/components/portal/kit";
 import { Kbd } from "@/components/portal/pills";
 import { Tip } from "@/components/ui/overlay";
@@ -29,11 +30,23 @@ import { internalPath } from "@/lib/safe-url";
 export function PortalShell() {
   const location = useLocation();
   const dark = useUiStore((s) => s.dark);
+  const themeMode = useUiStore((s) => s.themeMode);
+  const density = useUiStore((s) => s.density);
   const [drawer, setDrawer] = useState(false);
 
   useLayoutEffect(() => {
-    document.documentElement.classList.toggle("dark", dark);
-  }, [dark]);
+    const root = document.documentElement;
+    root.dataset.density = density;
+    if (themeMode !== "system") {
+      root.classList.toggle("dark", dark);
+      return;
+    }
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const sync = () => root.classList.toggle("dark", mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [dark, themeMode, density]);
 
   useEffect(() => {
     document.getElementById("main")?.scrollTo({ top: 0 });
@@ -243,6 +256,7 @@ function Sidebar({ inDrawer = false, onClose }: { inDrawer?: boolean; onClose?: 
 
 function TopBar({ onMenu }: { onMenu: () => void }) {
   const me = useMe();
+  useNotificationsRealtime(me.id);
   const setCommandOpen = useUiStore((s) => s.setCommandOpen);
   const duty = useAction((on: boolean) => api.setOnDuty(me.id, on), { success: (_r, on) => (on ? "You're on duty" : "You're off duty") });
 
