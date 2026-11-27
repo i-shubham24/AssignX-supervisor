@@ -95,12 +95,18 @@ export function BarChart({ data, highlight, height = 180, className, unit = "", 
     <figure className={cn("relative", className)}>
       <div className="flex items-end gap-1.5" style={{ height }} role="img" aria-label={ariaLabel}>
         {data.map((d, i) => {
-          const h = Math.max(4, (d.value / max) * (height - 28));
+          const h = Math.max(4, (d.value / max) * Math.max(24, height - 40));
           const isActive = active === i;
           return (
             <div key={d.label} className="relative flex h-full flex-1 flex-col items-center justify-end" onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
               {isActive ? (
-                <div className="absolute z-10 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-bold text-inverse shadow-soft-md" style={{ bottom: h + 8 }}>
+                <div
+                  className={cn(
+                    "pointer-events-none absolute z-10 whitespace-nowrap rounded-md bg-ink px-2 py-1 text-[11px] font-bold text-inverse shadow-soft-md",
+                    i === 0 ? "left-0" : i === data.length - 1 ? "right-0" : "",
+                  )}
+                  style={{ bottom: h + 8 }}
+                >
                   {d.value}
                   {unit}
                   {d.detail ? <span className="ml-1 font-medium opacity-70">{d.detail}</span> : null}

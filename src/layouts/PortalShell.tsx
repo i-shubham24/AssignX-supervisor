@@ -104,6 +104,7 @@ function PageFallback() {
 
 function Sidebar({ inDrawer = false, onClose }: { inDrawer?: boolean; onClose?: () => void }) {
   const me = useMe();
+  const { pathname } = useLocation();
   const { signOut } = useSession();
   const storeCollapsed = useUiStore((s) => s.railCollapsed);
   const collapsed = inDrawer ? false : storeCollapsed;
@@ -169,7 +170,7 @@ function Sidebar({ inDrawer = false, onClose }: { inDrawer?: boolean; onClose?: 
           </div>
         ) : null}
 
-        <nav className={cn("min-h-0 flex-1 overflow-y-auto px-3 pb-3", collapsed && "px-2")}>
+        <nav className={cn("min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-1", collapsed && "px-2.5")}>
           {groups.map((group) => (
             <div key={group ?? "root"} className="mt-3">
               {group && !collapsed ? <div className="px-2.5 pb-1.5 text-[11px] font-semibold text-ink-3">{group}</div> : null}
@@ -179,36 +180,32 @@ function Sidebar({ inDrawer = false, onClose }: { inDrawer?: boolean; onClose?: 
                   .filter((i) => i.group === group)
                   .map((item) => {
                     const badge = item.badge ? badges[item.badge] : undefined;
+                    const isActive = item.to === "/" ? pathname === "/" : pathname === item.to || pathname.startsWith(`${item.to}/`);
+                    // Tip uses Radix Slot (asChild), which stringifies function className props; keep className and children plain values.
                     const link = (
                       <NavLink
                         to={item.to}
                         end={item.to === "/"}
-                        className={({ isActive }) =>
-                          cn(
-                            "group relative flex items-center rounded-xl transition-colors duration-150",
-                            collapsed ? "mx-auto h-10 w-10 justify-center" : "h-10 gap-2.5 px-2.5 text-[13.5px]",
-                            isActive ? "bg-gradient-to-b from-primary-from to-primary-to font-semibold text-white shadow-[0_4px_12px_rgba(238,107,80,0.3)]" : "font-medium text-ink-muted hover:bg-hover hover:text-ink",
-                          )
-                        }
-                      >
-                        {({ isActive }) => (
-                          <>
-                            <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-                            {!collapsed ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : null}
-                            {badge && badge.count > 0 ? (
-                              <span
-                                className={cn(
-                                  "tabular flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold",
-                                  isActive ? "bg-white/25 text-white" : badge.urgent ? "bg-danger-dot text-white" : "bg-subtle text-ink-2",
-                                  collapsed && "absolute -right-1 -top-1 h-4 min-w-4 px-1 text-[9.5px] ring-2 ring-surface",
-                                )}
-                                aria-label={`${badge.count}${badge.urgent ? ", some late" : ""}`}
-                              >
-                                {badge.count}
-                              </span>
-                            ) : null}
-                          </>
+                        className={cn(
+                          "group relative flex items-center rounded-xl transition-colors duration-150",
+                          collapsed ? "mx-auto h-10 w-10 justify-center" : "h-10 gap-2.5 px-2.5 text-[13.5px]",
+                          isActive ? "bg-gradient-to-b from-primary-from to-primary-to font-semibold text-white shadow-[0_4px_12px_rgba(238,107,80,0.3)]" : "font-medium text-ink-muted hover:bg-hover hover:text-ink",
                         )}
+                      >
+                        <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+                        {!collapsed ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : null}
+                        {badge && badge.count > 0 ? (
+                          <span
+                            className={cn(
+                              "tabular flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold",
+                              isActive ? "bg-white/25 text-white" : badge.urgent ? "bg-danger-dot text-white" : "bg-subtle text-ink-2",
+                              collapsed && "absolute -right-0.5 -top-0.5 h-4 min-w-4 px-1 text-[9.5px] ring-2 ring-surface",
+                            )}
+                            aria-label={`${badge.count}${badge.urgent ? ", some late" : ""}`}
+                          >
+                            {badge.count}
+                          </span>
+                        ) : null}
                       </NavLink>
                     );
                     return <li key={item.to}>{collapsed ? <Tip content={item.label} side="right">{link}</Tip> : link}</li>;

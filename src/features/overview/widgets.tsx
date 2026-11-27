@@ -135,8 +135,8 @@ export function DueChart({ data, title = "Due in the next 12 hours" }: { data: B
           <div className="mt-0.5 text-[10px] uppercase font-bold text-ink-muted">due</div>
         </div>
       </div>
-      <div className="w-full max-w-full min-w-0 overflow-x-auto">
-        <BarChart data={data} highlight={peak} height={100} ariaLabel={`${title}: ${total} items`} className="w-full min-w-0" />
+      <div className="w-full max-w-full min-w-0 overflow-x-auto pt-1">
+        <BarChart data={data} highlight={peak} height={116} ariaLabel={`${title}: ${total} items`} className="w-full min-w-0" />
       </div>
     </section>
   );
