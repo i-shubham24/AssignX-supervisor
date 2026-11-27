@@ -8,9 +8,14 @@ import { createQueryClient } from "@/lib/query-client";
 import { SessionProvider } from "@/providers/SessionProvider";
 import { TooltipProvider } from "@/components/ui/overlay";
 import { DemoBanner } from "@/components/portal/DemoBanner";
+import { ConfigErrorScreen } from "@/components/portal/ConfigErrorScreen";
+import { env } from "@/lib/env";
 
 export default function App() {
   const [queryClient] = useState(createQueryClient);
+  if (env.configError) {
+    return <ConfigErrorScreen />;
+  }
   return (
     <QueryClientProvider client={queryClient}>
       <SessionProvider>

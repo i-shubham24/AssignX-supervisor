@@ -66,14 +66,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [liveState, setLiveState] = useState<{ operator: Operator | null; segment: Segment | null; loading: boolean; needsMfa: boolean }>({
     operator: null,
     segment: null,
-    loading: !env.demoMode,
+    loading: !env.demoMode && !env.configError,
     needsMfa: false,
   });
 
   const queryClient = useQueryClient();
 
   const hydrateLive = useCallback(async () => {
-    if (env.demoMode) return;
+    if (env.demoMode || env.configError) return;
     try {
       const { data: sessionRes, error: sessErr } = await supabase.auth.getSession();
       if (sessErr || !sessionRes.session) {
@@ -124,7 +124,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (env.demoMode) return;
+    if (env.demoMode || env.configError) return;
     void hydrateLive();
     const { data: listener } = supabase.auth.onAuthStateChange(() => {
       void hydrateLive();

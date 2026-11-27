@@ -44,13 +44,18 @@ type PortalClient = ReturnType<typeof createPortalClient>;
 /**
  * In demo mode every feature api answers from sample data before it would reach
  * this client. The stand-in turns a missed branch into an immediate, named error.
+ * When live configuration is missing or blocked, fail closed with the config error.
  */
-function createDemoGuard(): PortalClient {
+function createGuard(reason: string): PortalClient {
   return new Proxy({} as PortalClient, {
     get(_target, property) {
-      throw new Error(`Supabase is not available in demo mode (supabase.${String(property)}).`);
+      throw new Error(`${reason} (supabase.${String(property)}).`);
     },
   });
 }
 
-export const supabase = env.demoMode ? createDemoGuard() : createPortalClient();
+export const supabase = env.demoMode
+  ? createGuard("Supabase is not available in demo mode")
+  : env.configError
+    ? createGuard(env.configError)
+    : createPortalClient();

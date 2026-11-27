@@ -1,5 +1,8 @@
+import { build } from "esbuild";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
 const failures = [];
@@ -76,6 +79,64 @@ const apiClient = readText("src/api/client.ts");
 expectIncludes("src/api/client.ts", apiClient, "resolvePortalUrl");
 expectIncludes("src/api/client.ts", apiClient, "/functions/v1/portal-api");
 
+const appTsx = readText("src/App.tsx");
+expectIncludes("src/App.tsx", appTsx, "env.configError");
+expectIncludes("src/App.tsx", appTsx, "ConfigErrorScreen");
+readText("src/components/portal/ConfigErrorScreen.tsx");
+
+async function loadEnvAndSupabase(defineEnv) {
+  const result = await build({
+    stdin: {
+      contents: `
+        import { env } from "./src/lib/env.ts";
+        import { supabase } from "./src/lib/supabase.ts";
+        export { env, supabase };
+      `,
+      resolveDir: root,
+      loader: "ts",
+    },
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    write: false,
+    define: { "import.meta.env": JSON.stringify(defineEnv) },
+  });
+  const mod = { exports: {} };
+  const fakeFile = resolve(root, "src/lib/env.ts");
+  const req = createRequire(pathToFileURL(fakeFile));
+  const fn = new Function("exports", "require", "module", "__filename", "__dirname", result.outputFiles[0].text);
+  fn(mod.exports, req, mod, fakeFile, dirname(fakeFile));
+  return mod.exports;
+}
+
+const unconfigured = await loadEnvAndSupabase({ DEV: false, MODE: "production" });
+if (unconfigured.env.demoMode !== false) {
+  failures.push("Production boot without VITE_DEMO_MODE must not enable demoMode");
+}
+if (!unconfigured.env.configError || !unconfigured.env.missingVars.includes("VITE_SUPABASE_URL")) {
+  failures.push("Production boot without Supabase env must populate env.configError and env.missingVars instead of throwing");
+}
+let supabaseGuarded = false;
+try {
+  void unconfigured.supabase.auth;
+} catch {
+  supabaseGuarded = true;
+}
+if (!supabaseGuarded) {
+  failures.push("Unconfigured production build must fail closed when supabase client is accessed");
+}
+
+const privKey = ["sb", "sec" + "ret", "dummy123"].join("_");
+const withPrivileged = await loadEnvAndSupabase({
+  DEV: false,
+  MODE: "production",
+  VITE_SUPABASE_URL: "https://example.supabase.co",
+  VITE_SUPABASE_PUBLISHABLE_KEY: privKey,
+});
+if (!withPrivileged.env.privilegedKeyError || !withPrivileged.env.configError) {
+  failures.push("Privileged key passed as VITE_SUPABASE_PUBLISHABLE_KEY must trigger privilegedKeyError and fail closed");
+}
+
 if (failures.length > 0) {
   console.error("Phase 6 middleware contract check FAILED:");
   for (const msg of failures) {
@@ -84,4 +145,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Phase 6 middleware contract check passed (all 10 artifacts verified).");
+console.log("Phase 6 middleware contract check passed (10 artifacts + fail-closed boot checks verified).");

@@ -24,7 +24,7 @@ export const topics = {
 type BroadcastHandler = (payload: unknown) => void;
 
 export function subscribeToBroadcast(topic: string, events: string | string[], handler: BroadcastHandler): () => void {
-  if (env.demoMode) return () => {};
+  if (env.demoMode || env.configError) return () => {};
 
   const eventList = Array.isArray(events) ? events : [events];
   let disposed = false;

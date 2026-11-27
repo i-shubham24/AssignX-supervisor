@@ -1,10 +1,11 @@
 /**
  * Typed, validated environment access. Ported from Dolancer.
  *
- * Fails fast at boot, and refuses to start if anything resembling a privileged key
- * was wired in. The Supabase secret key carries BYPASSRLS. Even though portal users
- * are trusted staff, the portal must still go through row level security so every
- * read is attributable and scoped to the operator's segment.
+ * Fails closed at boot, and refuses to start the portal if backend env vars are
+ * missing or if anything resembling a privileged key was wired in. The Supabase
+ * secret key carries BYPASSRLS. Even though portal users are trusted staff, the
+ * portal must still go through row level security so every read is attributable
+ * and scoped to the operator's segment.
  *
  * Detection patterns are assembled from fragments so a `grep` of the built bundle
  * stays a meaningful leak check.
@@ -20,23 +21,16 @@ const SECRET_SHAPES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^rzp_(live|test)_/i, "a payment provider key"],
 ];
 
-function required(name: string, value: string | undefined): string {
-  const trimmed = value?.trim();
-  if (!trimmed) {
-    throw new Error(`Missing ${name}. Copy .env.example to .env.local and fill in the value.`);
-  }
-  return trimmed;
-}
-
-function assertNotPrivileged(name: string, value: string): void {
+function detectPrivilegedKey(name: string, value: string): string | null {
   for (const [shape, description] of SECRET_SHAPES) {
     if (shape.test(value)) {
-      throw new Error(
+      return (
         `${name} looks like ${description}. Only the publishable key belongs in this app. ` +
-          `Privileged keys bypass row level security and must stay in backend functions.`,
+        `Privileged keys bypass row level security and must stay in backend functions.`
       );
     }
   }
+  return null;
 }
 
 /**
@@ -51,17 +45,27 @@ function assertNotPrivileged(name: string, value: string): void {
 const raw = import.meta.env.VITE_DEMO_MODE;
 const demoMode = import.meta.env.DEV ? raw !== "false" : raw === "true";
 
-const supabaseUrl = demoMode
-  ? (import.meta.env.VITE_SUPABASE_URL ?? "").trim()
-  : required("VITE_SUPABASE_URL", import.meta.env.VITE_SUPABASE_URL);
-const supabasePublishableKey = demoMode
-  ? (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "").trim()
-  : required("VITE_SUPABASE_PUBLISHABLE_KEY", import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY);
+const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL ?? "").trim();
+const rawSupabasePublishableKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "").trim();
 
-if (supabasePublishableKey) {
-  assertNotPrivileged("VITE_SUPABASE_PUBLISHABLE_KEY", supabasePublishableKey);
+const privilegedKeyError = rawSupabasePublishableKey
+  ? detectPrivilegedKey("VITE_SUPABASE_PUBLISHABLE_KEY", rawSupabasePublishableKey)
+  : null;
+
+const missingVars: string[] = [];
+if (!demoMode) {
+  if (!rawSupabaseUrl) missingVars.push("VITE_SUPABASE_URL");
+  if (!rawSupabasePublishableKey) missingVars.push("VITE_SUPABASE_PUBLISHABLE_KEY");
 }
 
+const configError = privilegedKeyError
+  ? privilegedKeyError
+  : missingVars.length > 0
+    ? `Missing ${missingVars.join(" and ")}. Configure these variables in your host environment or copy .env.example to .env.local.`
+    : null;
+
+const supabaseUrl = privilegedKeyError ? "" : rawSupabaseUrl;
+const supabasePublishableKey = privilegedKeyError ? "" : rawSupabasePublishableKey;
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
 
 export const env = {
@@ -71,4 +75,7 @@ export const env = {
   apiBaseUrl,
   supabaseUrl,
   supabasePublishableKey,
+  missingVars: missingVars as readonly string[],
+  privilegedKeyError,
+  configError,
 } as const;
